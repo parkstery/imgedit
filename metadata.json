@@ -1,0 +1,5 @@
+{
+  "name": "Image Viewer simple Editor",
+  "description": "A lightweight web-based image viewer and editor with selection, clipboard, and zoom capabilities.",
+  "requestFramePermissions": []
+}

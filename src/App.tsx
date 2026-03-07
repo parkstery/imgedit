@@ -1,0 +1,496 @@
+import { useState, useCallback, useEffect } from 'react';
+import { Toolbar } from './components/Toolbar';
+import { CanvasEditor } from './components/CanvasEditor';
+import { StatusBar } from './components/StatusBar';
+import { SaveModal } from './components/SaveModal';
+import { ResizeModal } from './components/ResizeModal';
+import { CanvasSizeModal } from './components/CanvasSizeModal';
+import { EditorState, Rect } from './types';
+import { motion, AnimatePresence } from 'motion/react';
+
+const INITIAL_STATE: EditorState = {
+  zoom: 1,
+  position: { x: 0, y: 0 },
+  selection: null,
+  isSelecting: false,
+  isPanning: false,
+  image: null,
+  fileName: null,
+  tool: 'select',
+  color: '#3b82f6',
+  shapes: [],
+  activeShape: null,
+};
+
+export default function App() {
+  const [state, setState] = useState<EditorState>(INITIAL_STATE);
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
+  const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
+
+  // Initialize with a blank white canvas
+  useEffect(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 800;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const img = new Image();
+      img.onload = () => {
+        setState(prev => ({
+          ...prev,
+          image: img,
+          fileName: 'new-image.png',
+          position: { x: 50, y: 50 },
+          zoom: 0.8
+        }));
+      };
+      img.src = canvas.toDataURL();
+    }
+  }, []);
+
+  const handleImageLoad = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        setState(prev => ({
+          ...INITIAL_STATE,
+          image: img,
+          fileName: file.name,
+          // Center image initially
+          position: { x: 50, y: 50 },
+          zoom: 0.8
+        }));
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleOpen = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) handleImageLoad(file);
+    };
+    input.click();
+  };
+
+  const handleSave = (filename?: string, format: string = 'image/png', quality: number = 0.92) => {
+    if (!state.image) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = state.image.width;
+    canvas.height = state.image.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // For JPEG, we should fill background with white if there are transparent areas
+    if (format === 'image/jpeg') {
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    ctx.drawImage(state.image, 0, 0);
+    
+    // Draw shapes on export
+    state.shapes.forEach(shape => {
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = shape.lineWidth;
+      ctx.beginPath();
+      if (shape.type === 'line') {
+        ctx.moveTo(shape.x1, shape.y1);
+        ctx.lineTo(shape.x2, shape.y2);
+      } else if (shape.type === 'rect') {
+        ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
+      } else if (shape.type === 'ellipse') {
+        const rx = Math.abs(shape.x2 - shape.x1) / 2;
+        const ry = Math.abs(shape.y2 - shape.y1) / 2;
+        const cx = (shape.x1 + shape.x2) / 2;
+        const cy = (shape.y1 + shape.y2) / 2;
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+    });
+    
+    const extension = format.split('/')[1];
+    const finalFilename = filename || `edited-${state.fileName?.split('.')[0] || 'image'}.${extension}`;
+    
+    const link = document.createElement('a');
+    link.download = finalFilename;
+    link.href = canvas.toDataURL(format, quality);
+    link.click();
+    setIsSaveModalOpen(false);
+  };
+
+  const handleZoomIn = () => setState(prev => ({ ...prev, zoom: Math.min(8, prev.zoom + 0.1) }));
+  const handleZoomOut = () => setState(prev => ({ ...prev, zoom: Math.max(0.01, prev.zoom - 0.1) }));
+  const handleResetZoom = () => setState(prev => ({ ...prev, zoom: 1, position: { x: 50, y: 50 } }));
+  const handleZoomChange = (value: number) => setState(prev => ({ ...prev, zoom: Math.max(0.01, Math.min(8, value)) }));
+
+  const handleToolChange = (tool: EditorState['tool']) => setState(prev => ({ ...prev, tool, selection: null }));
+  const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
+  const handleDeleteLastShape = () => setState(prev => ({ ...prev, shapes: prev.shapes.slice(0, -1) }));
+  const handleClearShapes = () => setState(prev => ({ ...prev, shapes: [] }));
+
+  const handleResize = (newWidth: number, newHeight: number) => {
+    if (!state.image) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = newWidth;
+    canvas.height = newHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(state.image, 0, 0, newWidth, newHeight);
+    
+    const newImg = new Image();
+    newImg.onload = () => {
+      setState(prev => ({ ...prev, image: newImg, selection: null }));
+      setIsResizeModalOpen(false);
+    };
+    newImg.src = canvas.toDataURL();
+  };
+
+  const handleCanvasSize = (newWidth: number, newHeight: number) => {
+    if (!state.image) return;
+    const currentWidth = state.image.width;
+    const currentHeight = state.image.height;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = newWidth;
+    canvas.height = newHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Stretch image to new dimensions as requested
+    ctx.drawImage(state.image, 0, 0, newWidth, newHeight);
+    
+    // Scale shapes to match new dimensions
+    const scaleX = newWidth / currentWidth;
+    const scaleY = newHeight / currentHeight;
+    
+    const scaledShapes = state.shapes.map(shape => ({
+      ...shape,
+      x1: shape.x1 * scaleX,
+      y1: shape.y1 * scaleY,
+      x2: shape.x2 * scaleX,
+      y2: shape.y2 * scaleY,
+      lineWidth: shape.lineWidth * Math.sqrt(scaleX * scaleY)
+    }));
+
+    const newImg = new Image();
+    newImg.onload = () => {
+      setState(prev => ({ 
+        ...prev, 
+        image: newImg, 
+        selection: null, 
+        shapes: scaledShapes 
+      }));
+      setIsCanvasSizeModalOpen(false);
+    };
+    newImg.src = canvas.toDataURL();
+  };
+
+  const getSelectionCanvas = useCallback((rect: Rect): HTMLCanvasElement | null => {
+    if (!state.image) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // Draw base image
+    ctx.drawImage(
+      state.image,
+      rect.x, rect.y, rect.width, rect.height,
+      0, 0, rect.width, rect.height
+    );
+
+    // Draw shapes that intersect with the selection
+    state.shapes.forEach(shape => {
+      ctx.save();
+      ctx.translate(-rect.x, -rect.y);
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = shape.lineWidth;
+      ctx.beginPath();
+      if (shape.type === 'line') {
+        ctx.moveTo(shape.x1, shape.y1);
+        ctx.lineTo(shape.x2, shape.y2);
+      } else if (shape.type === 'rect') {
+        ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
+      } else if (shape.type === 'ellipse') {
+        const rx = Math.abs(shape.x2 - shape.x1) / 2;
+        const ry = Math.abs(shape.y2 - shape.y1) / 2;
+        const cx = (shape.x1 + shape.x2) / 2;
+        const cy = (shape.y1 + shape.y2) / 2;
+        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    return canvas;
+  }, [state.image, state.shapes]);
+
+  const handleCopy = useCallback(async () => {
+    if (!state.selection || !state.image) return;
+    const canvas = getSelectionCanvas(state.selection);
+    if (!canvas) return;
+
+    return new Promise<void>((resolve, reject) => {
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            const item = new ClipboardItem({ [blob.type]: blob });
+            await navigator.clipboard.write([item]);
+            console.log('Copied to clipboard');
+            resolve();
+          } catch (err) {
+            console.error('Failed to copy:', err);
+            reject(err);
+          }
+        } else {
+          reject(new Error('Canvas to blob failed'));
+        }
+      }, 'image/png');
+    });
+  }, [state.selection, state.image, getSelectionCanvas]);
+
+  const handleCut = useCallback(async () => {
+    if (!state.selection || !state.image) return;
+    
+    try {
+      // Wait for copy to complete
+      await handleCopy();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = state.image.width;
+      canvas.height = state.image.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(state.image, 0, 0);
+      ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+
+      const newImg = new Image();
+      newImg.onload = () => {
+        setState(prev => ({ ...prev, image: newImg, selection: null }));
+      };
+      newImg.src = canvas.toDataURL();
+    } catch (err) {
+      console.error('Cut failed:', err);
+    }
+  }, [state.selection, state.image, handleCopy]);
+
+  const processPastedImage = useCallback((img: HTMLImageElement, asNew: boolean = false) => {
+    if (!state.image || asNew) {
+      setState(prev => ({
+        ...prev,
+        image: img,
+        fileName: 'pasted-image.png',
+        zoom: 1,
+        position: { x: 50, y: 50 },
+        shapes: [],
+        selection: null
+      }));
+    } else {
+      const canvas = document.createElement('canvas');
+      canvas.width = state.image.width;
+      canvas.height = state.image.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(state.image, 0, 0);
+      
+      if (state.selection) {
+        // Scale pasted image to fit the selection box
+        ctx.drawImage(
+          img, 
+          state.selection.x, 
+          state.selection.y, 
+          state.selection.width, 
+          state.selection.height
+        );
+      } else {
+        // Place at center if no selection
+        const x = (state.image.width - img.width) / 2;
+        const y = (state.image.height - img.height) / 2;
+        ctx.drawImage(img, x, y);
+      }
+
+      const mergedImg = new Image();
+      mergedImg.onload = () => {
+        setState(prev => ({ ...prev, image: mergedImg, selection: null }));
+      };
+      mergedImg.src = canvas.toDataURL();
+    }
+  }, [state.image, state.selection]);
+
+  const handlePaste = useCallback(async (clipboardData?: DataTransfer, asNew: boolean = false) => {
+    try {
+      // 1. Try to get from DataTransfer (from 'paste' event)
+      if (clipboardData) {
+        const items = Array.from(clipboardData.items);
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            if (blob) {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => processPastedImage(img, asNew);
+                img.src = e.target?.result as string;
+              };
+              reader.readAsDataURL(blob);
+              return;
+            }
+          }
+        }
+      }
+
+      // 2. Fallback to navigator.clipboard.read()
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageTypes = item.types.filter(type => type.startsWith('image/'));
+        if (imageTypes.length > 0) {
+          const blob = await item.getType(imageTypes[0]);
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => processPastedImage(img, asNew);
+            img.src = e.target?.result as string;
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Paste failed:', err);
+    }
+  }, [processPastedImage]);
+
+  // Keyboard shortcuts and paste event
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 'c':
+            if (state.selection) {
+              e.preventDefault();
+              handleCopy();
+            }
+            break;
+          case 'x':
+            if (state.selection) {
+              e.preventDefault();
+              handleCut();
+            }
+            break;
+          case 'v':
+            // We'll handle this via the 'paste' event for better compatibility
+            break;
+          case 's':
+            e.preventDefault();
+            if (e.shiftKey) {
+              setIsSaveModalOpen(true);
+            } else {
+              handleSave();
+            }
+            break;
+          case 'o':
+            e.preventDefault();
+            handleOpen();
+            break;
+        }
+      }
+    };
+
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      if (e.clipboardData) {
+        handlePaste(e.clipboardData);
+      } else {
+        handlePaste();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('paste', handleGlobalPaste);
+    };
+  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave]);
+
+  return (
+    <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
+      <Toolbar 
+        state={state}
+        onOpen={handleOpen}
+        onSave={() => handleSave()}
+        onSaveAs={() => setIsSaveModalOpen(true)}
+        onResize={() => setIsResizeModalOpen(true)}
+        onCanvasSize={() => setIsCanvasSizeModalOpen(true)}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onResetZoom={handleResetZoom}
+        onZoomChange={handleZoomChange}
+        onToolChange={handleToolChange}
+        onColorChange={handleColorChange}
+        onDeleteLastShape={handleDeleteLastShape}
+        onClearShapes={handleClearShapes}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onPaste={handlePaste}
+      />
+      
+      <main className="flex-1 flex overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key="editor"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col"
+          >
+            <CanvasEditor 
+              state={state} 
+              setState={setState} 
+              onImageLoad={handleImageLoad}
+              onPaste={() => handlePaste()}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      <SaveModal 
+        isOpen={isSaveModalOpen}
+        onClose={() => setIsSaveModalOpen(false)}
+        onSave={handleSave}
+        defaultFileName={state.fileName || 'image.png'}
+      />
+
+      <ResizeModal
+        isOpen={isResizeModalOpen}
+        onClose={() => setIsResizeModalOpen(false)}
+        onResize={handleResize}
+        currentWidth={state.image?.width || 0}
+        currentHeight={state.image?.height || 0}
+      />
+
+      <CanvasSizeModal
+        isOpen={isCanvasSizeModalOpen}
+        onClose={() => setIsCanvasSizeModalOpen(false)}
+        onApply={handleCanvasSize}
+        currentWidth={state.image?.width || 0}
+        currentHeight={state.image?.height || 0}
+      />
+
+      <StatusBar state={state} />
+    </div>
+  );
+}
