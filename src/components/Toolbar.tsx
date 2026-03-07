@@ -62,8 +62,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onPaste
 }) => {
   return (
-    <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-4 gap-2 shrink-0 overflow-x-auto no-scrollbar">
-      <div className="flex items-center gap-1 pr-4 border-r border-neutral-700">
+    <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto no-scrollbar">
+      <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
         <ToolbarButton onClick={() => onPaste(undefined, true)} icon={<ClipboardPaste size={18} />} label="클립보드에서 새 이미지로 열기" />
         <ToolbarButton onClick={onSave} icon={<Save size={18} />} label="저장" disabled={!state.image} />
@@ -72,7 +72,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!state.image} />
       </div>
 
-      <div className="flex items-center gap-1 px-4 border-r border-neutral-700">
+      <div className="flex items-center gap-0.5 px-2 border-r border-neutral-700">
         <ToolbarButton 
           onClick={() => onToolChange('select')} 
           icon={<MousePointer2 size={18} />} 
@@ -98,7 +98,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           active={state.tool === 'ellipse'}
         />
         
-        <div className="flex items-center gap-2 ml-2 px-2 border-l border-neutral-700">
+        <div className="flex items-center gap-1 ml-1 px-1 border-l border-neutral-700">
           <input 
             type="color" 
             value={state.color} 
@@ -121,8 +121,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-4 px-4 border-r border-neutral-700">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2 px-2 border-r border-neutral-700">
+        <div className="flex items-center gap-0.5">
           <ToolbarButton onClick={onZoomOut} icon={<ZoomOut size={18} />} label="축소" />
           <input 
             type="range" 
@@ -131,7 +131,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             step="0.01" 
             value={state.zoom} 
             onChange={(e) => onZoomChange(parseFloat(e.target.value))}
-            className="w-24 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            className="w-16 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
           />
           <ToolbarButton onClick={onZoomIn} icon={<ZoomIn size={18} />} label="확대" />
         </div>
@@ -151,7 +151,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="맞춤" />
       </div>
 
-      <div className="flex items-center gap-1 px-4">
+      <div className="flex items-center gap-0.5 px-2">
         <ToolbarButton 
           onClick={onCopy} 
           icon={<Copy size={18} />} 
@@ -192,7 +192,7 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, dis
     disabled={disabled}
     title={shortcut ? `${label} (${shortcut})` : label}
     className={cn(
-      "p-2 rounded-md transition-colors flex items-center justify-center",
+      "p-1.5 rounded-md transition-colors flex items-center justify-center",
       "hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-30 disabled:cursor-not-allowed",
       active ? "bg-blue-600 text-white hover:bg-blue-500" : "text-neutral-200"
     )}
