@@ -246,7 +246,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     <div 
       ref={containerRef} 
       className={cn(
-        "flex-1 bg-neutral-900 overflow-hidden relative cursor-crosshair transition-colors",
+        "flex-1 bg-neutral-900 overflow-hidden relative cursor-crosshair transition-colors touch-none",
         isDraggingOver && "bg-blue-500/10"
       )}
       onMouseDown={handleMouseDown}
@@ -258,6 +258,26 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={(e) => e.preventDefault()}
+      onTouchStart={(e) => {
+        const touch = e.touches[0];
+        const mouseEvent = new MouseEvent('mousedown', {
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          button: 0
+        });
+        handleMouseDown(mouseEvent as any);
+      }}
+      onTouchMove={(e) => {
+        const touch = e.touches[0];
+        const mouseEvent = new MouseEvent('mousemove', {
+          clientX: touch.clientX,
+          clientY: touch.clientY
+        });
+        handleMouseMove(mouseEvent as any);
+      }}
+      onTouchEnd={() => {
+        handleMouseUp();
+      }}
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
       {isDraggingOver && (
