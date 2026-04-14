@@ -49,6 +49,32 @@ function SelectionBoxToolbarIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+function PolylineToolbarIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="shrink-0"
+      aria-hidden
+    >
+      <path
+        d="M4 17 L9 7 L15 13 L20 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="4" cy="17" r="2" fill="currentColor" />
+      <circle cx="9" cy="7" r="2" fill="currentColor" />
+      <circle cx="15" cy="13" r="2" fill="currentColor" />
+      <circle cx="20" cy="6" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 interface ToolbarProps {
   state: EditorState;
   onOpen: () => void;
@@ -113,6 +139,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<Minus size={18} />} 
           label="선 그리기" 
           active={state.tool === 'line'}
+        />
+        <ToolbarButton 
+          onClick={() => onToolChange('polyline')} 
+          icon={<PolylineToolbarIcon size={18} />} 
+          label="폴리라인 (클릭: 점 추가 · Enter·우클릭: 완료)" 
+          active={state.tool === 'polyline'}
         />
         <ToolbarButton 
           onClick={() => onToolChange('rect')} 

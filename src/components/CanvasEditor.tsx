@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { EditorState, Point, Rect } from '../types';
+import { EditorState, Point, Rect, Shape } from '../types';
 import { cn } from '../lib/utils';
 
 interface CanvasEditorProps {
@@ -15,8 +15,58 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  /** 폴리라인: 마지막 점에서 커서까지 미리보기 */
+  const [polyHover, setPolyHover] = useState<Point | null>(null);
   /** mouseup 직후 mouseleave가 한 번 더 오며 도형이 이중 커밋되는 것을 막음 */
   const shapeEndGuardRef = useRef(false);
+
+  const commitPolylineDraft = useCallback(() => {
+    setState(prev => {
+      const d = prev.polylineDraft;
+      if (!d || d.points.length < 2) return prev;
+      const xs = d.points.map(p => p.x);
+      const ys = d.points.map(p => p.y);
+      const x1 = Math.min(...xs);
+      const x2 = Math.max(...xs);
+      const y1 = Math.min(...ys);
+      const y2 = Math.max(...ys);
+      const shape: Shape = {
+        id: d.id,
+        type: 'polyline',
+        x1,
+        y1,
+        x2,
+        y2,
+        points: d.points.map(p => ({ x: p.x, y: p.y })),
+        color: d.color,
+        lineWidth: d.lineWidth,
+      };
+      return { ...prev, shapes: [...prev.shapes, shape], polylineDraft: null };
+    });
+    setPolyHover(null);
+    queueMicrotask(() => onShapeCommitted?.());
+  }, [setState, onShapeCommitted]);
+
+  useEffect(() => {
+    if (state.tool !== 'polyline') setPolyHover(null);
+  }, [state.tool]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (state.tool !== 'polyline' || !state.polylineDraft) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitPolylineDraft();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setState(prev => ({ ...prev, polylineDraft: null }));
+        setPolyHover(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [state.tool, state.polylineDraft, commitPolylineDraft, setState]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -24,20 +74,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (!state.image) return;
 
     ctx.save();
-    // Apply transformations
     ctx.translate(state.position.x, state.position.y);
     ctx.scale(state.zoom, state.zoom);
 
-    // Draw image
     ctx.drawImage(state.image, 0, 0);
 
-    // Draw existing shapes
     state.shapes.forEach(shape => {
       ctx.strokeStyle = shape.color;
       ctx.lineWidth = shape.lineWidth / state.zoom;
@@ -53,11 +99,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
         const cx = (shape.x1 + shape.x2) / 2;
         const cy = (shape.y1 + shape.y2) / 2;
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        }
       }
       ctx.stroke();
     });
 
-    // Draw active shape
     if (state.activeShape) {
       ctx.strokeStyle = state.activeShape.color;
       ctx.lineWidth = state.activeShape.lineWidth / state.zoom;
@@ -77,7 +127,21 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
       ctx.stroke();
     }
 
-    // Draw selection
+    if (state.polylineDraft && state.polylineDraft.points.length > 0) {
+      const pts = state.polylineDraft.points;
+      ctx.strokeStyle = state.polylineDraft.color;
+      ctx.lineWidth = state.polylineDraft.lineWidth / state.zoom;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      if (polyHover) {
+        ctx.lineTo(polyHover.x, polyHover.y);
+      }
+      ctx.stroke();
+    }
+
     if (state.selection) {
       ctx.strokeStyle = '#3b82f6';
       ctx.lineWidth = 2 / state.zoom;
@@ -88,14 +152,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
         state.selection.width,
         state.selection.height
       );
-      
-      // Semi-transparent overlay outside selection
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-      // This is a bit complex for a simple stroke, but let's just do the box for now
     }
 
     ctx.restore();
-  }, [state]);
+  }, [state, polyHover]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -132,6 +192,32 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     };
   };
 
+  const handlePolylineClick = (e: React.MouseEvent) => {
+    if (state.tool !== 'polyline' || !state.image) return;
+    const imgPos = toImageCoords(getMousePos(e));
+    setState(prev => {
+      if (prev.tool !== 'polyline') return prev;
+      if (!prev.polylineDraft) {
+        return {
+          ...prev,
+          polylineDraft: {
+            id: Math.random().toString(36).slice(2, 11),
+            points: [imgPos],
+            color: prev.color,
+            lineWidth: 2,
+          },
+        };
+      }
+      return {
+        ...prev,
+        polylineDraft: {
+          ...prev.polylineDraft,
+          points: [...prev.polylineDraft.points, imgPos],
+        },
+      };
+    });
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
     setDragStart(pos);
@@ -141,20 +227,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     } else if (e.button === 0) {
       if (state.tool === 'select') {
         setState(prev => ({ ...prev, isSelecting: true, selection: null }));
-      } else {
+      } else if (state.tool !== 'polyline') {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
           activeShape: {
             id: Math.random().toString(36).substr(2, 9),
-            type: state.tool as any,
+            type: state.tool as 'line' | 'rect' | 'ellipse',
             x1: imgPos.x,
             y1: imgPos.y,
             x2: imgPos.x,
             y2: imgPos.y,
             color: state.color,
             lineWidth: 2,
-          }
+          },
         }));
       }
     }
@@ -163,35 +249,43 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
 
+    if (state.polylineDraft) {
+      setPolyHover(toImageCoords(pos));
+    } else {
+      setPolyHover(null);
+    }
+
     if (state.isPanning && dragStart) {
       const dx = pos.x - dragStart.x;
       const dy = pos.y - dragStart.y;
       setState(prev => ({
         ...prev,
-        position: { x: prev.position.x + dx, y: prev.position.y + dy }
+        position: { x: prev.position.x + dx, y: prev.position.y + dy },
       }));
       setDragStart(pos);
     } else if (state.isSelecting && dragStart) {
       const start = toImageCoords(dragStart);
       const current = toImageCoords(pos);
-      
+
       const rect: Rect = {
         x: Math.min(start.x, current.x),
         y: Math.min(start.y, current.y),
         width: Math.abs(current.x - start.x),
         height: Math.abs(current.y - start.y),
       };
-      
+
       setState(prev => ({ ...prev, selection: rect }));
     } else if (state.activeShape) {
       const current = toImageCoords(pos);
       setState(prev => ({
         ...prev,
-        activeShape: prev.activeShape ? {
-          ...prev.activeShape,
-          x2: current.x,
-          y2: current.y,
-        } : null
+        activeShape: prev.activeShape
+          ? {
+              ...prev.activeShape,
+              x2: current.x,
+              y2: current.y,
+            }
+          : null,
       }));
     }
   };
@@ -223,11 +317,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     const zoomSpeed = 0.1;
     const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
     const newZoom = Math.max(0.01, Math.min(8, state.zoom + delta));
-    
-    // Zoom towards mouse position
+
     const mousePos = getMousePos(e);
     const imagePosBefore = toImageCoords(mousePos);
-    
+
     setState(prev => {
       const nextPos = {
         x: mousePos.x - imagePosBefore.x * newZoom,
@@ -255,28 +348,36 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (state.tool === 'polyline' && state.polylineDraft && state.polylineDraft.points.length >= 2) {
+      commitPolylineDraft();
+    }
+  };
+
   return (
-    <div 
-      ref={containerRef} 
+    <div
+      ref={containerRef}
       className={cn(
-        "flex-1 bg-neutral-900 overflow-hidden relative cursor-crosshair transition-colors touch-none",
-        isDraggingOver && "bg-blue-500/10"
+        'flex-1 bg-neutral-900 overflow-hidden relative cursor-crosshair transition-colors touch-none',
+        isDraggingOver && 'bg-blue-500/10'
       )}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onClick={handlePolylineClick}
       onWheel={handleWheel}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={handleContextMenu}
       onTouchStart={(e) => {
         const touch = e.touches[0];
         const mouseEvent = new MouseEvent('mousedown', {
           clientX: touch.clientX,
           clientY: touch.clientY,
-          button: 0
+          button: 0,
         });
         handleMouseDown(mouseEvent as any);
       }}
@@ -284,7 +385,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
         const touch = e.touches[0];
         const mouseEvent = new MouseEvent('mousemove', {
           clientX: touch.clientX,
-          clientY: touch.clientY
+          clientY: touch.clientY,
         });
         handleMouseMove(mouseEvent as any);
       }}

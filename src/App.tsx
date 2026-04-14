@@ -5,8 +5,21 @@ import { StatusBar } from './components/StatusBar';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
-import { EditorState, Rect, ImageUndoSnapshot, UndoEntry } from './types';
+import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry } from './types';
 import { motion, AnimatePresence } from 'motion/react';
+
+function shapeToBoundsRect(shape: { x1: number; y1: number; x2: number; y2: number }): Rect {
+  return {
+    x: Math.min(shape.x1, shape.x2),
+    y: Math.min(shape.y1, shape.y2),
+    width: Math.abs(shape.x2 - shape.x1),
+    height: Math.abs(shape.y2 - shape.y1),
+  };
+}
+
+function rectsOverlap(a: Rect, b: Rect): boolean {
+  return !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
+}
 
 const INITIAL_STATE: EditorState = {
   zoom: 1,
@@ -20,6 +33,7 @@ const INITIAL_STATE: EditorState = {
   color: '#ff0000',
   shapes: [],
   activeShape: null,
+  polylineDraft: null,
 };
 
 export default function App() {
@@ -167,6 +181,11 @@ export default function App() {
         const cx = (shape.x1 + shape.x2) / 2;
         const cy = (shape.y1 + shape.y2) / 2;
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        }
       }
       ctx.stroke();
     });
@@ -186,7 +205,8 @@ export default function App() {
   const handleResetZoom = () => setState(prev => ({ ...prev, zoom: 1, position: { x: 50, y: 50 } }));
   const handleZoomChange = (value: number) => setState(prev => ({ ...prev, zoom: Math.max(0.01, Math.min(8, value)) }));
 
-  const handleToolChange = (tool: EditorState['tool']) => setState(prev => ({ ...prev, tool, selection: null }));
+  const handleToolChange = (tool: EditorState['tool']) =>
+    setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
 
   const handleDeleteLastShape = useCallback(() => {
@@ -255,14 +275,23 @@ export default function App() {
     const scaleX = newWidth / currentWidth;
     const scaleY = newHeight / currentHeight;
     
-    const scaledShapes = state.shapes.map(shape => ({
-      ...shape,
-      x1: shape.x1 * scaleX,
-      y1: shape.y1 * scaleY,
-      x2: shape.x2 * scaleX,
-      y2: shape.y2 * scaleY,
-      lineWidth: shape.lineWidth * Math.sqrt(scaleX * scaleY)
-    }));
+    const scaledShapes = state.shapes.map(shape => {
+      const base = {
+        ...shape,
+        x1: shape.x1 * scaleX,
+        y1: shape.y1 * scaleY,
+        x2: shape.x2 * scaleX,
+        y2: shape.y2 * scaleY,
+        lineWidth: shape.lineWidth * Math.sqrt(scaleX * scaleY),
+      };
+      if (shape.type === 'polyline' && shape.points) {
+        return {
+          ...base,
+          points: shape.points.map((p: Point) => ({ x: p.x * scaleX, y: p.y * scaleY })),
+        };
+      }
+      return base;
+    });
 
     const newImg = new Image();
     newImg.onload = () => {
@@ -294,6 +323,9 @@ export default function App() {
 
     // Draw shapes that intersect with the selection
     state.shapes.forEach(shape => {
+      if (shape.type === 'polyline') {
+        if (!rectsOverlap(rect, shapeToBoundsRect(shape))) return;
+      }
       ctx.save();
       ctx.translate(-rect.x, -rect.y);
       ctx.strokeStyle = shape.color;
@@ -310,6 +342,11 @@ export default function App() {
         const cx = (shape.x1 + shape.x2) / 2;
         const cy = (shape.y1 + shape.y2) / 2;
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        }
       }
       ctx.stroke();
       ctx.restore();

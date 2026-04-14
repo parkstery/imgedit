@@ -10,17 +10,26 @@ export interface Rect {
   height: number;
 }
 
-export type Tool = 'select' | 'line' | 'rect' | 'ellipse';
+export type Tool = 'select' | 'line' | 'polyline' | 'rect' | 'ellipse';
+
+export interface PolylineDraft {
+  id: string;
+  points: Point[];
+  color: string;
+  lineWidth: number;
+}
 
 export interface Shape {
   id: string;
-  type: 'line' | 'rect' | 'ellipse';
+  type: 'line' | 'rect' | 'ellipse' | 'polyline';
   x1: number;
   y1: number;
   x2: number;
   y2: number;
   color: string;
   lineWidth: number;
+  /** type이 polyline일 때 꼭짓점 (이미지 좌표) */
+  points?: Point[];
 }
 
 export interface EditorState {
@@ -35,6 +44,8 @@ export interface EditorState {
   color: string;
   shapes: Shape[];
   activeShape: Shape | null;
+  /** 폴리라인 그리는 중 (클릭으로 점 추가, Enter·우클릭으로 완료) */
+  polylineDraft: PolylineDraft | null;
 }
 
 export interface ImageUndoSnapshot {
