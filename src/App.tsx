@@ -75,19 +75,31 @@ export default function App() {
   }, []);
 
   const applyImageSnapshot = useCallback((snap: ImageUndoSnapshot) => {
-    const img = new Image();
-    img.onload = () => {
-      setState(prev => ({
-        ...prev,
-        image: img,
-        fileName: snap.fileName,
-        shapes: snap.shapes.map(sh => ({ ...sh })),
-        selection: snap.selection ? { ...snap.selection } : null,
-        zoom: snap.zoom,
-        position: { ...snap.position },
-      }));
+    const nextMeta = {
+      fileName: snap.fileName,
+      shapes: snap.shapes.map(sh => ({ ...sh })),
+      selection: snap.selection ? { ...snap.selection } : null,
+      zoom: snap.zoom,
+      position: { ...snap.position },
     };
-    img.src = snap.imageDataUrl;
+
+    if (snap.imageDataUrl) {
+      const img = new Image();
+      img.onload = () => {
+        setState(prev => ({ ...prev, ...nextMeta, image: img }));
+      };
+      img.onerror = () => {
+        if (snap.imageElement) {
+          setState(prev => ({ ...prev, ...nextMeta, image: snap.imageElement! }));
+        }
+      };
+      img.src = snap.imageDataUrl;
+      return;
+    }
+
+    if (snap.imageElement) {
+      setState(prev => ({ ...prev, ...nextMeta, image: snap.imageElement! }));
+    }
   }, []);
 
   const handleImageLoad = useCallback((file: File) => {
@@ -359,21 +371,26 @@ export default function App() {
   const processPastedImage = useCallback((img: HTMLImageElement, asNew: boolean = false) => {
     const s = stateRef.current;
 
-    let snapshot: ImageUndoSnapshot | null = null;
-    if (s.image) {
+    const buildPasteSnapshot = (): ImageUndoSnapshot | null => {
+      if (!s.image) return null;
+      let imageDataUrl: string | undefined;
       try {
-        snapshot = {
-          imageDataUrl: s.image.toDataURL(),
-          fileName: s.fileName,
-          shapes: s.shapes.map(sh => ({ ...sh })),
-          selection: s.selection ? { ...s.selection } : null,
-          zoom: s.zoom,
-          position: { ...s.position },
-        };
+        imageDataUrl = s.image.toDataURL();
       } catch {
-        snapshot = null;
+        /* 교차 출처 등으로 픽셀 읽기 불가 → imageElement만으로 복구 */
       }
-    }
+      return {
+        ...(imageDataUrl ? { imageDataUrl } : {}),
+        imageElement: s.image,
+        fileName: s.fileName,
+        shapes: s.shapes.map(sh => ({ ...sh })),
+        selection: s.selection ? { ...s.selection } : null,
+        zoom: s.zoom,
+        position: { ...s.position },
+      };
+    };
+
+    const snapshot = buildPasteSnapshot();
 
     if (!s.image || asNew) {
       if (snapshot) {

@@ -38,7 +38,10 @@ export interface EditorState {
 }
 
 export interface ImageUndoSnapshot {
-  imageDataUrl: string;
+  /** 가능할 때만(동일 출처 등). 없으면 imageElement로 복구 */
+  imageDataUrl?: string;
+  /** toDataURL 불가(tainted 캔버스)여도 붙여넣기 직전 비트맵을 참조로 보존 */
+  imageElement?: HTMLImageElement | null;
   fileName: string | null;
   shapes: Shape[];
   selection: Rect | null;
