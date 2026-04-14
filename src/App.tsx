@@ -26,6 +26,8 @@ export default function App() {
   const [state, setState] = useState<EditorState>(INITIAL_STATE);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const undoStackRef = useRef<UndoEntry[]>([]);
+  /** Ctrl+Z용: 붙여넣기 직전 스냅샷만 (도형이 스택 위에 있어도 마지막 붙여넣기 취소 가능) */
+  const pasteUndoRef = useRef<ImageUndoSnapshot[]>([]);
   const stateRef = useRef(state);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
@@ -68,6 +70,10 @@ export default function App() {
     setUndoStack(next);
   }, []);
 
+  const pushPasteUndoSnapshot = useCallback((snapshot: ImageUndoSnapshot) => {
+    pasteUndoRef.current = [...pasteUndoRef.current, snapshot];
+  }, []);
+
   const applyImageSnapshot = useCallback((snap: ImageUndoSnapshot) => {
     const img = new Image();
     img.onload = () => {
@@ -90,6 +96,7 @@ export default function App() {
       const img = new Image();
       img.onload = () => {
         undoStackRef.current = [];
+        pasteUndoRef.current = [];
         setUndoStack([]);
         setState(prev => ({
           ...INITIAL_STATE,
@@ -186,6 +193,9 @@ export default function App() {
     if (last.type === 'shape') {
       setState(s => ({ ...s, shapes: s.shapes.slice(0, -1) }));
     } else if (last.type === 'image' || last.type === 'imageMerge') {
+      if (pasteUndoRef.current.length > 0) {
+        pasteUndoRef.current = pasteUndoRef.current.slice(0, -1);
+      }
       applyImageSnapshot(last.snapshot);
     }
   }, [applyImageSnapshot]);
@@ -368,6 +378,7 @@ export default function App() {
     if (!s.image || asNew) {
       if (snapshot) {
         appendUndoEntry({ type: 'image', snapshot });
+        pushPasteUndoSnapshot(snapshot);
       }
       setState(prev => ({
         ...prev,
@@ -413,12 +424,13 @@ export default function App() {
       mergedImg.onload = () => {
         if (snapshot) {
           appendUndoEntry({ type: 'imageMerge', snapshot });
+          pushPasteUndoSnapshot(snapshot);
         }
         setState(prev => ({ ...prev, image: mergedImg, selection: null }));
       };
       mergedImg.src = mergedDataUrl;
     }
-  }, [appendUndoEntry]);
+  }, [appendUndoEntry, pushPasteUndoSnapshot]);
 
   const handlePaste = useCallback(async (clipboardData?: DataTransfer, asNew: boolean = false) => {
     try {
@@ -467,6 +479,24 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
+        const isUndoKey = !e.shiftKey && (e.code === 'KeyZ' || e.key.toLowerCase() === 'z');
+        if (isUndoKey && pasteUndoRef.current.length > 0) {
+          e.preventDefault();
+          const snaps = pasteUndoRef.current;
+          const snap = snaps[snaps.length - 1];
+          pasteUndoRef.current = snaps.slice(0, -1);
+          let st = [...undoStackRef.current];
+          while (st.length > 0) {
+            const t = st[st.length - 1];
+            st.pop();
+            if (t.type === 'image' || t.type === 'imageMerge') break;
+          }
+          undoStackRef.current = st;
+          setUndoStack(st);
+          applyImageSnapshot(snap);
+          return;
+        }
+
         switch (e.key.toLowerCase()) {
           case 'c':
             if (state.selection) {
@@ -495,18 +525,6 @@ export default function App() {
             e.preventDefault();
             handleOpen();
             break;
-          case 'z': {
-            if (e.shiftKey) break;
-            const stack = undoStackRef.current;
-            const top = stack[stack.length - 1];
-            if (!top || top.type !== 'imageMerge') break;
-            e.preventDefault();
-            const nextStack = stack.slice(0, -1);
-            undoStackRef.current = nextStack;
-            setUndoStack(nextStack);
-            applyImageSnapshot(top.snapshot);
-            break;
-          }
         }
       }
     };
