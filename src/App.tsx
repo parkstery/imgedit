@@ -68,6 +68,22 @@ export default function App() {
     setUndoStack(next);
   }, []);
 
+  const applyImageSnapshot = useCallback((snap: ImageUndoSnapshot) => {
+    const img = new Image();
+    img.onload = () => {
+      setState(prev => ({
+        ...prev,
+        image: img,
+        fileName: snap.fileName,
+        shapes: snap.shapes.map(sh => ({ ...sh })),
+        selection: snap.selection ? { ...snap.selection } : null,
+        zoom: snap.zoom,
+        position: { ...snap.position },
+      }));
+    };
+    img.src = snap.imageDataUrl;
+  }, []);
+
   const handleImageLoad = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -169,23 +185,10 @@ export default function App() {
     setUndoStack(nextStack);
     if (last.type === 'shape') {
       setState(s => ({ ...s, shapes: s.shapes.slice(0, -1) }));
-    } else {
-      const snap = last.snapshot;
-      const img = new Image();
-      img.onload = () => {
-        setState(prev => ({
-          ...prev,
-          image: img,
-          fileName: snap.fileName,
-          shapes: snap.shapes.map(sh => ({ ...sh })),
-          selection: snap.selection ? { ...snap.selection } : null,
-          zoom: snap.zoom,
-          position: { ...snap.position },
-        }));
-      };
-      img.src = snap.imageDataUrl;
+    } else if (last.type === 'image' || last.type === 'imageMerge') {
+      applyImageSnapshot(last.snapshot);
     }
-  }, []);
+  }, [applyImageSnapshot]);
 
   const handleClearShapes = () => {
     const next = undoStackRef.current.filter(e => e.type !== 'shape');
@@ -409,7 +412,7 @@ export default function App() {
       const mergedImg = new Image();
       mergedImg.onload = () => {
         if (snapshot) {
-          appendUndoEntry({ type: 'image', snapshot });
+          appendUndoEntry({ type: 'imageMerge', snapshot });
         }
         setState(prev => ({ ...prev, image: mergedImg, selection: null }));
       };
@@ -492,6 +495,18 @@ export default function App() {
             e.preventDefault();
             handleOpen();
             break;
+          case 'z': {
+            if (e.shiftKey) break;
+            const stack = undoStackRef.current;
+            const top = stack[stack.length - 1];
+            if (!top || top.type !== 'imageMerge') break;
+            e.preventDefault();
+            const nextStack = stack.slice(0, -1);
+            undoStackRef.current = nextStack;
+            setUndoStack(nextStack);
+            applyImageSnapshot(top.snapshot);
+            break;
+          }
         }
       }
     };
@@ -511,7 +526,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave]);
+  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave, applyImageSnapshot]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
