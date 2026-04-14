@@ -149,6 +149,11 @@ export default function App() {
     };
   }, []);
 
+  const handlePrepareImageUndoForPaint = useCallback(() => {
+    const snap = buildStateSnapshot(stateRef.current);
+    if (snap) appendUndoEntry({ type: 'image', snapshot: snap });
+  }, [buildStateSnapshot, appendUndoEntry]);
+
   const handleImageLoad = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -722,6 +727,7 @@ export default function App() {
               onImageLoad={handleImageLoad}
               onPaste={() => handlePaste()}
               onShapeCommitted={() => appendUndoEntry({ type: 'shape' })}
+              onPrepareImageUndo={handlePrepareImageUndoForPaint}
             />
           </motion.div>
         </AnimatePresence>

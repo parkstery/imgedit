@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { EditorState, Point, Rect, Shape } from '../types';
 import { cn } from '../lib/utils';
+import { strokeShapesOnContext } from '../lib/drawShapes';
+import { floodFillImageData, hexToRgba } from '../lib/floodFill';
 
 interface CanvasEditorProps {
   state: EditorState;
@@ -8,9 +10,18 @@ interface CanvasEditorProps {
   onImageLoad: (file: File) => void;
   onPaste: () => void;
   onShapeCommitted?: () => void;
+  /** 페인트통 등 비트맵 변경 직전에 Undo용 스냅샷을 쌓을 때 호출 */
+  onPrepareImageUndo?: () => void;
 }
 
-export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onImageLoad, onPaste, onShapeCommitted }) => {
+export const CanvasEditor: React.FC<CanvasEditorProps> = ({
+  state,
+  setState,
+  onImageLoad,
+  onPaste,
+  onShapeCommitted,
+  onPrepareImageUndo,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
@@ -275,7 +286,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
             id: Math.random().toString(36).slice(2, 11),
             points: [imgPos],
             color: prev.color,
-            lineWidth: 2,
+            lineWidth: prev.lineWidth,
           },
         };
       }
@@ -301,6 +312,61 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     });
   };
 
+  const handleFillClick = (e: React.MouseEvent) => {
+    if (state.tool !== 'fill' || !state.image) return;
+    const imgPos = toImageCoords(getMousePos(e));
+    const ix = Math.floor(imgPos.x);
+    const iy = Math.floor(imgPos.y);
+    const { image: img, shapes, color: fillHex } = state;
+
+    onPrepareImageUndo?.();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(img, 0, 0);
+    strokeShapesOnContext(ctx, shapes);
+
+    let imageData: ImageData;
+    try {
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (err) {
+      console.warn('페인트통: 픽셀을 읽을 수 없습니다.', err);
+      return;
+    }
+
+    const fill = hexToRgba(fillHex);
+    floodFillImageData(imageData, ix, iy, fill, 40);
+    ctx.putImageData(imageData, 0, 0);
+
+    let dataUrl: string;
+    try {
+      dataUrl = canvas.toDataURL();
+    } catch {
+      console.warn('페인트통: 결과 이미지를 만들 수 없습니다.');
+      return;
+    }
+
+    const nextImg = new Image();
+    nextImg.onload = () => {
+      setState(prev => ({
+        ...prev,
+        image: nextImg,
+        shapes: [],
+        selection: null,
+        polylineDraft: null,
+        freehandDraft: null,
+      }));
+    };
+    nextImg.onerror = () => {
+      console.warn('페인트통: 결과 이미지를 불러오지 못했습니다.');
+    };
+    nextImg.src = dataUrl;
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
     setDragStart(pos);
@@ -310,7 +376,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     } else if (e.button === 0) {
       if (state.tool === 'select') {
         setState(prev => ({ ...prev, isSelecting: true, selection: null }));
-      } else if (state.tool !== 'polyline' && state.tool !== 'freehand') {
+      } else if (state.tool !== 'polyline' && state.tool !== 'freehand' && state.tool !== 'fill') {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
@@ -464,7 +530,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     <div
       ref={containerRef}
       className={cn(
-        'flex-1 bg-neutral-900 overflow-hidden relative cursor-crosshair transition-colors touch-none',
+        'flex-1 bg-neutral-900 overflow-hidden relative transition-colors touch-none',
+        state.tool === 'fill' ? 'cursor-cell' : 'cursor-crosshair',
         isDraggingOver && 'bg-blue-500/10'
       )}
       onMouseDown={handleMouseDown}
@@ -474,6 +541,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
       onClick={(e) => {
         handlePolylineClick(e);
         handleFreehandClick(e);
+        handleFillClick(e);
       }}
       onWheel={handleWheel}
       onDragOver={handleDragOver}

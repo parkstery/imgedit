@@ -18,9 +18,26 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  PaintBucket,
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
+
+/** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
+const PAINT_PALETTE = [
+  '#000000',
+  '#404040',
+  '#808080',
+  '#c0c0c0',
+  '#ffffff',
+  '#7f1d1d',
+  '#ea580c',
+  '#ca8a04',
+  '#16a34a',
+  '#2563eb',
+  '#7c3aed',
+  '#db2777',
+] as const;
 
 /** 캔버스 선택 상자와 같은 점선 박스 */
 function SelectionBoxToolbarIcon({ size = 18 }: { size?: number }) {
@@ -171,6 +188,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="원 그리기" 
           active={state.tool === 'ellipse'}
         />
+        <ToolbarButton
+          onClick={() => onToolChange('fill')}
+          icon={<PaintBucket size={18} />}
+          label="페인트통"
+          active={state.tool === 'fill'}
+        />
         
         <div className="flex items-center gap-1 ml-1 px-1 border-l border-neutral-700">
           <input 
@@ -244,27 +267,45 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="맞춤" />
       </div>
 
-      <div className="flex items-center gap-0.5 px-2">
-        <ToolbarButton 
-          onClick={onCopy} 
-          icon={<Copy size={18} />} 
-          label="복사" 
-          disabled={!state.selection} 
-          shortcut="Ctrl+C"
-        />
-        <ToolbarButton 
-          onClick={onCut} 
-          icon={<Scissors size={18} />} 
-          label="잘라내기" 
-          disabled={!state.selection} 
-          shortcut="Ctrl+X"
-        />
-        <ToolbarButton 
-          onClick={onPaste} 
-          icon={<ClipboardPaste size={18} />} 
-          label="붙여넣기" 
-          shortcut="Ctrl+V"
-        />
+      <div className="flex flex-1 min-w-0 items-center justify-end gap-0">
+        <div className="flex items-center gap-0.5 px-2 shrink-0">
+          <ToolbarButton 
+            onClick={onCopy} 
+            icon={<Copy size={18} />} 
+            label="복사" 
+            disabled={!state.selection} 
+            shortcut="Ctrl+C"
+          />
+          <ToolbarButton 
+            onClick={onCut} 
+            icon={<Scissors size={18} />} 
+            label="잘라내기" 
+            disabled={!state.selection} 
+            shortcut="Ctrl+X"
+          />
+          <ToolbarButton 
+            onClick={onPaste} 
+            icon={<ClipboardPaste size={18} />} 
+            label="붙여넣기" 
+            shortcut="Ctrl+V"
+          />
+        </div>
+        <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0">
+          {PAINT_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              onClick={() => onColorChange(c)}
+              className={cn(
+                'w-4 h-4 rounded-sm border border-neutral-600 shrink-0',
+                'hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                state.color.toLowerCase() === c.toLowerCase() && 'ring-2 ring-blue-400'
+              )}
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

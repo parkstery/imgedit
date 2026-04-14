@@ -10,7 +10,7 @@ export interface Rect {
   height: number;
 }
 
-export type Tool = 'select' | 'freehand' | 'line' | 'polyline' | 'rect' | 'ellipse';
+export type Tool = 'select' | 'freehand' | 'line' | 'polyline' | 'rect' | 'ellipse' | 'fill';
 
 export interface PolylineDraft {
   id: string;
