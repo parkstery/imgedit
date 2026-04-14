@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   FolderOpen, 
@@ -134,6 +134,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     []
   );
 
+  const updateLineWidthMenuPosition = useCallback(() => {
+    const buttonRect = lineWidthButtonRef.current?.getBoundingClientRect();
+    if (!buttonRect) return;
+    setLineWidthMenuPos({
+      left: Math.round(buttonRect.left),
+      top: Math.round(buttonRect.bottom + 6),
+    });
+  }, []);
+
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -149,13 +158,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   useEffect(() => {
     if (!isLineWidthOpen) return;
-    const buttonRect = lineWidthButtonRef.current?.getBoundingClientRect();
-    if (!buttonRect) return;
-    setLineWidthMenuPos({
-      left: buttonRect.left,
-      top: buttonRect.bottom + 4,
-    });
-  }, [isLineWidthOpen]);
+    updateLineWidthMenuPosition();
+
+    const handleViewportChange = () => updateLineWidthMenuPosition();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [isLineWidthOpen, updateLineWidthMenuPosition]);
 
   return (
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto no-scrollbar">
@@ -211,7 +223,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <div className="relative">
             <button
               ref={lineWidthButtonRef}
-              onClick={() => setIsLineWidthOpen(prev => !prev)}
+              onClick={() => {
+                if (!isLineWidthOpen) {
+                  updateLineWidthMenuPosition();
+                }
+                setIsLineWidthOpen(prev => !prev);
+              }}
               title="선두께"
               className="h-7 px-2 rounded-md transition-colors flex items-center gap-1 text-xs text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600"
             >
