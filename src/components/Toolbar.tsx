@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   FolderOpen, 
   Save, 
@@ -120,9 +119,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onPaste
 }) => {
   const [isLineWidthOpen, setIsLineWidthOpen] = useState(false);
-  const lineWidthButtonRef = useRef<HTMLButtonElement>(null);
   const lineWidthMenuRef = useRef<HTMLDivElement>(null);
-  const [lineWidthMenuPos, setLineWidthMenuPos] = useState({ top: 0, left: 0 });
   const lineWidthOptions = useMemo(
     () => [
       { width: 2 },
@@ -134,20 +131,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     []
   );
 
-  const updateLineWidthMenuPosition = useCallback(() => {
-    const buttonRect = lineWidthButtonRef.current?.getBoundingClientRect();
-    if (!buttonRect) return;
-    setLineWidthMenuPos({
-      left: Math.round(buttonRect.left),
-      top: Math.round(buttonRect.bottom + 6),
-    });
-  }, []);
-
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
       const insideMenu = lineWidthMenuRef.current?.contains(target);
-      const insideButton = lineWidthButtonRef.current?.contains(target);
+      const insideButton = (target as HTMLElement).closest('[data-line-width-button]');
       if (!insideMenu && !insideButton) {
         setIsLineWidthOpen(false);
       }
@@ -156,21 +144,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  useEffect(() => {
-    if (!isLineWidthOpen) return;
-    updateLineWidthMenuPosition();
-
-    const handleViewportChange = () => updateLineWidthMenuPosition();
-    window.addEventListener('resize', handleViewportChange);
-    window.addEventListener('scroll', handleViewportChange, true);
-    return () => {
-      window.removeEventListener('resize', handleViewportChange);
-      window.removeEventListener('scroll', handleViewportChange, true);
-    };
-  }, [isLineWidthOpen, updateLineWidthMenuPosition]);
-
   return (
-    <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto no-scrollbar">
+    <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
         <ToolbarButton onClick={() => onPaste(undefined, true)} icon={<ClipboardPaste size={18} />} label="클립보드에서 새 이미지로 열기" />
@@ -222,13 +197,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
           <div className="relative">
             <button
-              ref={lineWidthButtonRef}
-              onClick={() => {
-                if (!isLineWidthOpen) {
-                  updateLineWidthMenuPosition();
-                }
-                setIsLineWidthOpen(prev => !prev);
-              }}
+              data-line-width-button
+              onClick={() => setIsLineWidthOpen(prev => !prev)}
               title="선두께"
               className="h-7 px-2 rounded-md transition-colors flex items-center gap-1 text-xs text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600"
             >
@@ -236,11 +206,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <span className="text-neutral-300">{state.lineWidth}px</span>
               <ChevronDown size={14} className={cn("transition-transform", isLineWidthOpen && "rotate-180")} />
             </button>
-            {isLineWidthOpen && createPortal(
+            {isLineWidthOpen && (
               <div
                 ref={lineWidthMenuRef}
-                className="fixed w-36 rounded-md border border-neutral-700 bg-neutral-900 shadow-xl z-[9999] py-1"
-                style={{ left: lineWidthMenuPos.left, top: lineWidthMenuPos.top }}
+                className="absolute left-0 top-full mt-1 w-36 rounded-md border border-neutral-700 bg-neutral-900 shadow-xl z-40 py-1"
               >
                 {lineWidthOptions.map(({ width }) => (
                   <button
@@ -268,8 +237,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     </svg>
                   </button>
                 ))}
-              </div>,
-              document.body
+              </div>
             )}
           </div>
           <ToolbarButton 
