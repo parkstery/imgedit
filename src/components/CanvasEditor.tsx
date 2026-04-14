@@ -43,6 +43,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   /** 폴리라인: 마지막 점에서 커서까지 미리보기 */
@@ -133,6 +134,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   useEffect(() => {
     if (state.tool !== 'polyline') setPolyHover(null);
   }, [state.tool]);
+
+  useEffect(() => {
+    if (state.tool === 'text' && state.textDraft) {
+      textInputRef.current?.focus();
+    }
+  }, [state.tool, state.textDraft?.id, state.textDraft?.x, state.textDraft?.y]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -259,24 +266,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }
         ctx.stroke();
       }
-    }
-
-    /* 도형 레이어가 꺼져 있어도 입력 중 미리보기는 보여야 함 */
-    if (state.tool === 'text' && state.textDraft) {
-      const d = state.textDraft;
-      ctx.save();
-      ctx.textBaseline = 'alphabetic';
-      ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
-      if (d.text.length > 0) {
-        ctx.fillStyle = d.color;
-        ctx.globalAlpha = 0.88;
-        ctx.fillText(d.text, d.x, d.y);
-      } else {
-        ctx.fillStyle = '#a3a3a3';
-        ctx.globalAlpha = 0.45;
-        ctx.fillText('텍스트', d.x, d.y);
-      }
-      ctx.restore();
     }
 
     if (state.selection) {
@@ -688,16 +677,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       <canvas ref={canvasRef} className="block w-full h-full" />
       {state.tool === 'text' && state.textDraft && (
         <div
-          className="absolute left-2 right-2 bottom-2 z-40 flex flex-col gap-2 rounded-lg border border-neutral-600 bg-neutral-900/95 p-2 shadow-lg backdrop-blur-sm"
+          className="pointer-events-auto absolute z-50 min-w-0"
+          style={{
+            left: state.position.x + state.textDraft.x * state.zoom,
+            top:
+              state.position.y +
+              state.textDraft.y * state.zoom -
+              state.textDraft.fontSize * state.zoom * 0.78,
+          }}
           onMouseDown={e => e.stopPropagation()}
         >
-          <p className="text-[10px] text-neutral-500">
-            아래 칸에만 입력한 채로는 캔버스에 올라가지 않습니다. 확인 또는 Ctrl+Enter(Mac: ⌘+Enter)로 반영합니다. 캔버스를 다시
-            클릭하면 위치만 바뀝니다.
-          </p>
-          <textarea
-            autoFocus
-            rows={3}
+          <input
+            ref={textInputRef}
+            type="text"
+            autoComplete="off"
             value={state.textDraft.text}
             onChange={e =>
               setState(prev =>
@@ -707,38 +700,31 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               )
             }
             onKeyDown={e => {
+              if (e.nativeEvent.isComposing) return;
               if (e.key === 'Escape') {
                 e.preventDefault();
                 cancelTextDraft();
                 return;
               }
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              if (e.key === 'Enter') {
                 e.preventDefault();
                 commitTextDraft();
               }
             }}
-            className="w-full resize-y rounded border border-neutral-600 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-blue-500 focus:outline-none"
-            placeholder="여기에 입력…"
             spellCheck={false}
             lang="ko"
+            placeholder="입력…"
+            title="Enter: 확정 · Esc: 취소 · 캔버스 다시 클릭: 입력 위치만 이동"
+            className="m-0 rounded border border-blue-500/70 bg-neutral-950/80 px-1 py-0 shadow-md outline-none ring-1 ring-blue-500/30 focus:border-blue-400"
+            style={{
+              fontSize: state.textDraft.fontSize * state.zoom,
+              lineHeight: 1.15,
+              color: state.textDraft.color,
+              fontFamily: CANVAS_TEXT_FONT_STACK,
+              width: `${Math.max(4, state.textDraft.text.length + 2)}ch`,
+              minWidth: '3ch',
+            }}
           />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={cancelTextDraft}
-              className="rounded border border-neutral-600 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
-            >
-              취소
-            </button>
-            <button
-              type="button"
-              onClick={commitTextDraft}
-              disabled={!state.textDraft.text.trim()}
-              className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              확인
-            </button>
-          </div>
         </div>
       )}
       {isDraggingOver && (
