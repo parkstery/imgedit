@@ -17,6 +17,7 @@ import {
   Minus,
   Trash2,
   Undo2,
+  Redo2,
   ChevronDown
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
@@ -91,7 +92,9 @@ interface ToolbarProps {
   onColorChange: (color: string) => void;
   onLineWidthChange: (lineWidth: number) => void;
   onDeleteLastShape: () => void;
+  onRedoLastShape: () => void;
   canUndoLast: boolean;
+  canRedoLast: boolean;
   onClearShapes: () => void;
   onCopy: () => void;
   onCut: () => void;
@@ -113,7 +116,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onColorChange,
   onLineWidthChange,
   onDeleteLastShape,
+  onRedoLastShape,
   canUndoLast,
+  canRedoLast,
   onClearShapes,
   onCopy,
   onCut,
@@ -250,8 +255,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <ToolbarButton 
             onClick={onDeleteLastShape} 
             icon={<Undo2 size={18} />} 
-            label="마지막 작업 되돌리기 (도형 / 붙여넣기)" 
+            label="Undo" 
             disabled={!canUndoLast}
+          />
+          <ToolbarButton
+            onClick={onRedoLastShape}
+            icon={<Redo2 size={18} />}
+            label="Redo"
+            disabled={!canRedoLast}
           />
           <ToolbarButton 
             onClick={onClearShapes} 

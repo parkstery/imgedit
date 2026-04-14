@@ -42,6 +42,8 @@ export default function App() {
   const [state, setState] = useState<EditorState>(INITIAL_STATE);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const undoStackRef = useRef<UndoEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<ImageUndoSnapshot[]>([]);
+  const redoStackRef = useRef<ImageUndoSnapshot[]>([]);
   /** Ctrl+Z용: 붙여넣기 직전 스냅샷만 (도형이 스택 위에 있어도 마지막 붙여넣기 취소 가능) */
   const pasteUndoRef = useRef<ImageUndoSnapshot[]>([]);
   const stateRef = useRef(state);
@@ -80,11 +82,21 @@ export default function App() {
     undoStackRef.current = undoStack;
   }, [undoStack]);
 
+  useLayoutEffect(() => {
+    redoStackRef.current = redoStack;
+  }, [redoStack]);
+
+  const clearRedoStack = useCallback(() => {
+    redoStackRef.current = [];
+    setRedoStack([]);
+  }, []);
+
   const appendUndoEntry = useCallback((entry: UndoEntry) => {
     const next = [...undoStackRef.current, entry];
     undoStackRef.current = next;
     setUndoStack(next);
-  }, []);
+    clearRedoStack();
+  }, [clearRedoStack]);
 
   const pushPasteUndoSnapshot = useCallback((snapshot: ImageUndoSnapshot) => {
     pasteUndoRef.current = [...pasteUndoRef.current, snapshot];
@@ -118,6 +130,25 @@ export default function App() {
     }
   }, []);
 
+  const buildStateSnapshot = useCallback((source: EditorState): ImageUndoSnapshot | null => {
+    if (!source.image) return null;
+    let imageDataUrl: string | undefined;
+    try {
+      imageDataUrl = source.image.toDataURL();
+    } catch {
+      /* cross-origin 등으로 toDataURL 불가한 경우 imageElement만으로 복구 */
+    }
+    return {
+      ...(imageDataUrl ? { imageDataUrl } : {}),
+      imageElement: source.image,
+      fileName: source.fileName,
+      shapes: source.shapes.map(sh => ({ ...sh })),
+      selection: source.selection ? { ...source.selection } : null,
+      zoom: source.zoom,
+      position: { ...source.position },
+    };
+  }, []);
+
   const handleImageLoad = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -125,7 +156,9 @@ export default function App() {
       img.onload = () => {
         undoStackRef.current = [];
         pasteUndoRef.current = [];
+        redoStackRef.current = [];
         setUndoStack([]);
+        setRedoStack([]);
         setState(prev => ({
           ...INITIAL_STATE,
           image: img,
@@ -213,12 +246,18 @@ export default function App() {
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
 
   const handleDeleteLastShape = useCallback(() => {
+    const undoPoint = buildStateSnapshot(stateRef.current);
     const prevStack = undoStackRef.current;
     if (prevStack.length === 0) {
       setState(s => {
         if (s.shapes.length === 0) return s;
         return { ...s, shapes: s.shapes.slice(0, -1) };
       });
+      if (undoPoint && stateRef.current.shapes.length > 0) {
+        const nextRedo = [...redoStackRef.current, undoPoint];
+        redoStackRef.current = nextRedo;
+        setRedoStack(nextRedo);
+      }
       return;
     }
     const last = prevStack[prevStack.length - 1];
@@ -233,12 +272,35 @@ export default function App() {
       }
       applyImageSnapshot(last.snapshot);
     }
-  }, [applyImageSnapshot]);
+    if (undoPoint) {
+      const nextRedo = [...redoStackRef.current, undoPoint];
+      redoStackRef.current = nextRedo;
+      setRedoStack(nextRedo);
+    }
+  }, [applyImageSnapshot, buildStateSnapshot]);
+
+  const handleRedoLastShape = useCallback(() => {
+    const prevRedo = redoStackRef.current;
+    if (prevRedo.length === 0) return;
+    const redoSnap = prevRedo[prevRedo.length - 1];
+    const nextRedo = prevRedo.slice(0, -1);
+    redoStackRef.current = nextRedo;
+    setRedoStack(nextRedo);
+
+    const undoPoint = buildStateSnapshot(stateRef.current);
+    if (undoPoint) {
+      const nextUndo = [...undoStackRef.current, { type: 'image', snapshot: undoPoint } as UndoEntry];
+      undoStackRef.current = nextUndo;
+      setUndoStack(nextUndo);
+    }
+    applyImageSnapshot(redoSnap);
+  }, [applyImageSnapshot, buildStateSnapshot]);
 
   const handleClearShapes = () => {
     const next = undoStackRef.current.filter(e => e.type !== 'shape');
     undoStackRef.current = next;
     setUndoStack(next);
+    clearRedoStack();
     setState(prev => ({ ...prev, shapes: [] }));
   };
 
@@ -538,6 +600,7 @@ export default function App() {
       if (e.ctrlKey || e.metaKey) {
         const isUndoKey = !e.shiftKey && (e.code === 'KeyZ' || e.key.toLowerCase() === 'z');
         if (isUndoKey && pasteUndoRef.current.length > 0) {
+          const undoPoint = buildStateSnapshot(stateRef.current);
           e.preventDefault();
           const snaps = pasteUndoRef.current;
           const snap = snaps[snaps.length - 1];
@@ -551,6 +614,21 @@ export default function App() {
           undoStackRef.current = st;
           setUndoStack(st);
           applyImageSnapshot(snap);
+          if (undoPoint) {
+            const nextRedo = [...redoStackRef.current, undoPoint];
+            redoStackRef.current = nextRedo;
+            setRedoStack(nextRedo);
+          }
+          return;
+        }
+
+        const isRedoKey =
+          (e.shiftKey && (e.code === 'KeyZ' || e.key.toLowerCase() === 'z')) ||
+          e.code === 'KeyY' ||
+          e.key.toLowerCase() === 'y';
+        if (isRedoKey) {
+          e.preventDefault();
+          handleRedoLastShape();
           return;
         }
 
@@ -601,7 +679,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave, applyImageSnapshot]);
+  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave, applyImageSnapshot, buildStateSnapshot, handleRedoLastShape]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
@@ -620,7 +698,9 @@ export default function App() {
         onColorChange={handleColorChange}
         onLineWidthChange={handleLineWidthChange}
         onDeleteLastShape={handleDeleteLastShape}
+        onRedoLastShape={handleRedoLastShape}
         canUndoLast={undoStack.length > 0 || state.shapes.length > 0}
+        canRedoLast={redoStack.length > 0}
         onClearShapes={handleClearShapes}
         onCopy={handleCopy}
         onCut={handleCut}
