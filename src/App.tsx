@@ -492,12 +492,6 @@ export default function App() {
             e.preventDefault();
             handleOpen();
             break;
-          case 'z':
-            if (!e.shiftKey && (undoStack.length > 0 || state.shapes.length > 0)) {
-              e.preventDefault();
-              handleDeleteLastShape();
-            }
-            break;
         }
       }
     };
@@ -517,7 +511,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [state.selection, state.shapes.length, undoStack, handleCopy, handleCut, handlePaste, handleSave, handleDeleteLastShape]);
+  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
