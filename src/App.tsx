@@ -315,14 +315,29 @@ export default function App() {
   const handleZoomChange = (value: number) => setState(prev => ({ ...prev, zoom: Math.max(0.01, Math.min(8, value)) }));
 
   const handleToolChange = (tool: EditorState['tool']) =>
-    setState(prev => ({
-      ...prev,
-      tool,
-      selection: null,
-      polylineDraft: null,
-      freehandDraft: null,
-      textDraft: null,
-    }));
+    setState(prev => {
+      let activeLayer = prev.activeLayer;
+      if (tool === 'fill') activeLayer = 'base';
+      else if (
+        tool === 'line' ||
+        tool === 'rect' ||
+        tool === 'ellipse' ||
+        tool === 'polyline' ||
+        tool === 'freehand' ||
+        tool === 'text'
+      ) {
+        activeLayer = 'shape';
+      }
+      return {
+        ...prev,
+        tool,
+        selection: null,
+        polylineDraft: null,
+        freehandDraft: null,
+        textDraft: null,
+        activeLayer,
+      };
+    });
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
   const handleTextFontSizeChange = (textFontSize: number) => {
@@ -767,6 +782,14 @@ export default function App() {
     };
 
     const handleGlobalPaste = (e: ClipboardEvent) => {
+      const t = e.target;
+      if (
+        t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLInputElement ||
+        (t instanceof HTMLElement && t.isContentEditable)
+      ) {
+        return;
+      }
       e.preventDefault();
       if (e.clipboardData) {
         handlePaste(e.clipboardData);
