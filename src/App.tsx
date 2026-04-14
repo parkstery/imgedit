@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { CanvasEditor } from './components/CanvasEditor';
 import { StatusBar } from './components/StatusBar';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
-import { EditorState, Rect } from './types';
+import { EditorState, Rect, ImageUndoSnapshot, UndoEntry } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 
 const INITIAL_STATE: EditorState = {
@@ -24,6 +24,8 @@ const INITIAL_STATE: EditorState = {
 
 export default function App() {
   const [state, setState] = useState<EditorState>(INITIAL_STATE);
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const stateRef = useRef(state);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
   const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
@@ -51,11 +53,16 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const handleImageLoad = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        setUndoStack([]);
         setState(prev => ({
           ...INITIAL_STATE,
           image: img,
@@ -135,8 +142,43 @@ export default function App() {
   const handleToolChange = (tool: EditorState['tool']) => setState(prev => ({ ...prev, tool, selection: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
 
-  const handleDeleteLastShape = () => setState(prev => ({ ...prev, shapes: prev.shapes.slice(0, -1) }));
-  const handleClearShapes = () => setState(prev => ({ ...prev, shapes: [] }));
+  const handleDeleteLastShape = useCallback(() => {
+    setUndoStack(prevStack => {
+      if (prevStack.length === 0) {
+        setState(s => {
+          if (s.shapes.length === 0) return s;
+          return { ...s, shapes: s.shapes.slice(0, -1) };
+        });
+        return prevStack;
+      }
+      const last = prevStack[prevStack.length - 1];
+      const nextStack = prevStack.slice(0, -1);
+      if (last.type === 'shape') {
+        setState(s => ({ ...s, shapes: s.shapes.slice(0, -1) }));
+      } else {
+        const snap = last.snapshot;
+        const img = new Image();
+        img.onload = () => {
+          setState(prev => ({
+            ...prev,
+            image: img,
+            fileName: snap.fileName,
+            shapes: snap.shapes.map(sh => ({ ...sh })),
+            selection: snap.selection ? { ...snap.selection } : null,
+            zoom: snap.zoom,
+            position: { ...snap.position },
+          }));
+        };
+        img.src = snap.imageDataUrl;
+      }
+      return nextStack;
+    });
+  }, []);
+
+  const handleClearShapes = () => {
+    setUndoStack(prev => prev.filter(e => e.type !== 'shape'));
+    setState(prev => ({ ...prev, shapes: [] }));
+  };
 
   const handleResize = (newWidth: number, newHeight: number) => {
     if (!state.image) return;
@@ -288,7 +330,25 @@ export default function App() {
   }, [state.selection, state.image, handleCopy]);
 
   const processPastedImage = useCallback((img: HTMLImageElement, asNew: boolean = false) => {
-    if (!state.image || asNew) {
+    const s = stateRef.current;
+    if (!s.image && !asNew) return;
+
+    let snapshot: ImageUndoSnapshot | null = null;
+    if (s.image) {
+      snapshot = {
+        imageDataUrl: s.image.toDataURL(),
+        fileName: s.fileName,
+        shapes: s.shapes.map(sh => ({ ...sh })),
+        selection: s.selection ? { ...s.selection } : null,
+        zoom: s.zoom,
+        position: { ...s.position },
+      };
+    }
+
+    if (!s.image || asNew) {
+      if (snapshot) {
+        setUndoStack(st => [...st, { type: 'image', snapshot }]);
+      }
       setState(prev => ({
         ...prev,
         image: img,
@@ -300,36 +360,37 @@ export default function App() {
       }));
     } else {
       const canvas = document.createElement('canvas');
-      canvas.width = state.image.width;
-      canvas.height = state.image.height;
+      canvas.width = s.image.width;
+      canvas.height = s.image.height;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      ctx.drawImage(state.image, 0, 0);
-      
-      if (state.selection) {
-        // Scale pasted image to fit the selection box
+      ctx.drawImage(s.image, 0, 0);
+
+      if (s.selection) {
         ctx.drawImage(
-          img, 
-          state.selection.x, 
-          state.selection.y, 
-          state.selection.width, 
-          state.selection.height
+          img,
+          s.selection.x,
+          s.selection.y,
+          s.selection.width,
+          s.selection.height
         );
       } else {
-        // Place at center if no selection
-        const x = (state.image.width - img.width) / 2;
-        const y = (state.image.height - img.height) / 2;
+        const x = (s.image.width - img.width) / 2;
+        const y = (s.image.height - img.height) / 2;
         ctx.drawImage(img, x, y);
       }
 
       const mergedImg = new Image();
       mergedImg.onload = () => {
+        if (snapshot) {
+          setUndoStack(st => [...st, { type: 'image', snapshot }]);
+        }
         setState(prev => ({ ...prev, image: mergedImg, selection: null }));
       };
       mergedImg.src = canvas.toDataURL();
     }
-  }, [state.image, state.selection]);
+  }, []);
 
   const handlePaste = useCallback(async (clipboardData?: DataTransfer, asNew: boolean = false) => {
     try {
@@ -407,7 +468,7 @@ export default function App() {
             handleOpen();
             break;
           case 'z':
-            if (!e.shiftKey) {
+            if (!e.shiftKey && (undoStack.length > 0 || state.shapes.length > 0)) {
               e.preventDefault();
               handleDeleteLastShape();
             }
@@ -431,7 +492,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave, handleDeleteLastShape]);
+  }, [state.selection, state.shapes.length, undoStack, handleCopy, handleCut, handlePaste, handleSave, handleDeleteLastShape]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
@@ -449,6 +510,7 @@ export default function App() {
         onToolChange={handleToolChange}
         onColorChange={handleColorChange}
         onDeleteLastShape={handleDeleteLastShape}
+        canUndoLast={undoStack.length > 0 || state.shapes.length > 0}
         onClearShapes={handleClearShapes}
         onCopy={handleCopy}
         onCut={handleCut}
@@ -469,6 +531,7 @@ export default function App() {
               setState={setState} 
               onImageLoad={handleImageLoad}
               onPaste={() => handlePaste()}
+              onShapeCommitted={() => setUndoStack(st => [...st, { type: 'shape' }])}
             />
           </motion.div>
         </AnimatePresence>

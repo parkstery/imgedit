@@ -7,9 +7,10 @@ interface CanvasEditorProps {
   setState: React.Dispatch<React.SetStateAction<EditorState>>;
   onImageLoad: (file: File) => void;
   onPaste: () => void;
+  onShapeCommitted?: () => void;
 }
 
-export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onImageLoad, onPaste }) => {
+export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onImageLoad, onPaste, onShapeCommitted }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
@@ -200,6 +201,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
         shapes: [...prev.shapes, prev.activeShape!],
         activeShape: null,
       }));
+      onShapeCommitted?.();
     }
     setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
     setDragStart(null);

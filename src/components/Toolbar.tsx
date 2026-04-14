@@ -36,6 +36,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onDeleteLastShape: () => void;
+  canUndoLast: boolean;
   onClearShapes: () => void;
   onCopy: () => void;
   onCut: () => void;
@@ -56,6 +57,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToolChange,
   onColorChange,
   onDeleteLastShape,
+  canUndoLast,
   onClearShapes,
   onCopy,
   onCut,
@@ -109,8 +111,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <ToolbarButton 
             onClick={onDeleteLastShape} 
             icon={<Undo2 size={18} />} 
-            label="마지막 도형 삭제" 
-            disabled={state.shapes.length === 0}
+            label="마지막 작업 되돌리기 (도형 / 붙여넣기)" 
+            disabled={!canUndoLast}
           />
           <ToolbarButton 
             onClick={onClearShapes} 

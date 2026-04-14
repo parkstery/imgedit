@@ -36,3 +36,16 @@ export interface EditorState {
   shapes: Shape[];
   activeShape: Shape | null;
 }
+
+export interface ImageUndoSnapshot {
+  imageDataUrl: string;
+  fileName: string | null;
+  shapes: Shape[];
+  selection: Rect | null;
+  zoom: number;
+  position: Point;
+}
+
+export type UndoEntry =
+  | { type: 'shape' }
+  | { type: 'image'; snapshot: ImageUndoSnapshot };
