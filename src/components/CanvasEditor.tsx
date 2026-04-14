@@ -15,6 +15,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  /** mouseup 직후 mouseleave가 한 번 더 오며 도형이 이중 커밋되는 것을 막음 */
+  const shapeEndGuardRef = useRef(false);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -196,12 +198,21 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
 
   const handleMouseUp = () => {
     if (state.activeShape) {
+      if (shapeEndGuardRef.current) {
+        setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+        setDragStart(null);
+        return;
+      }
+      shapeEndGuardRef.current = true;
       setState(prev => ({
         ...prev,
         shapes: [...prev.shapes, prev.activeShape!],
         activeShape: null,
       }));
       onShapeCommitted?.();
+      queueMicrotask(() => {
+        shapeEndGuardRef.current = false;
+      });
     }
     setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
     setDragStart(null);
