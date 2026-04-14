@@ -10,10 +10,14 @@ function setTextFont(ctx: CanvasRenderingContext2D, fontSize: number) {
 
 export function fillTextShapeOnContext(ctx: CanvasRenderingContext2D, shape: Shape) {
   if (shape.type !== 'text' || shape.text == null || shape.fontSize == null) return;
+  const fs = Math.max(1, shape.fontSize);
+  ctx.save();
+  ctx.globalAlpha = 1;
   ctx.fillStyle = shape.color;
-  setTextFont(ctx, shape.fontSize);
+  setTextFont(ctx, fs);
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(shape.text, shape.x1, shape.y1);
+  ctx.restore();
 }
 
 /** 선택 영역·겹침 판별용 근사 바운딩 박스 (이미지 좌표) */

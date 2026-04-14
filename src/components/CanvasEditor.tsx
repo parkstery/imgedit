@@ -115,7 +115,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         text: d.text.trim(),
         fontSize: d.fontSize,
       };
-      return { ...prev, shapes: [...prev.shapes, shape], textDraft: null };
+      return {
+        ...prev,
+        shapes: [...prev.shapes, shape],
+        textDraft: null,
+        /** 텍스트는 도형 레이어에만 그려지므로 꺼져 있으면 보이지 않음 → 확정 시 켬 */
+        shapeLayerVisible: true,
+      };
     });
     queueMicrotask(() => onShapeCommitted?.('텍스트'));
   }, [setState, onShapeCommitted]);
@@ -181,6 +187,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     if (state.shapeLayerVisible) {
       state.shapes.forEach(shape => {
+        if (shape.type === 'text') {
+          fillTextShapeOnContext(ctx, shape);
+          return;
+        }
         ctx.strokeStyle = shape.color;
         ctx.lineWidth = shape.lineWidth / state.zoom;
         ctx.beginPath();
@@ -200,30 +210,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           for (let i = 1; i < shape.points.length; i++) {
             ctx.lineTo(shape.points[i].x, shape.points[i].y);
           }
-        } else if (shape.type === 'text') {
-          fillTextShapeOnContext(ctx, shape);
         }
-        if (shape.type !== 'text') {
-          ctx.stroke();
-        }
+        ctx.stroke();
       });
-
-      if (state.tool === 'text' && state.textDraft && state.shapeLayerVisible) {
-        const d = state.textDraft;
-        ctx.save();
-        ctx.textBaseline = 'alphabetic';
-        ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
-        if (d.text.length > 0) {
-          ctx.fillStyle = d.color;
-          ctx.globalAlpha = 0.88;
-          ctx.fillText(d.text, d.x, d.y);
-        } else {
-          ctx.fillStyle = '#a3a3a3';
-          ctx.globalAlpha = 0.45;
-          ctx.fillText('텍스트', d.x, d.y);
-        }
-        ctx.restore();
-      }
 
       if (state.activeShape) {
         ctx.strokeStyle = state.activeShape.color;
@@ -270,6 +259,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }
         ctx.stroke();
       }
+    }
+
+    /* 도형 레이어가 꺼져 있어도 입력 중 미리보기는 보여야 함 */
+    if (state.tool === 'text' && state.textDraft) {
+      const d = state.textDraft;
+      ctx.save();
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
+      if (d.text.length > 0) {
+        ctx.fillStyle = d.color;
+        ctx.globalAlpha = 0.88;
+        ctx.fillText(d.text, d.x, d.y);
+      } else {
+        ctx.fillStyle = '#a3a3a3';
+        ctx.globalAlpha = 0.45;
+        ctx.fillText('텍스트', d.x, d.y);
+      }
+      ctx.restore();
     }
 
     if (state.selection) {
@@ -685,7 +692,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           onMouseDown={e => e.stopPropagation()}
         >
           <p className="text-[10px] text-neutral-500">
-            캔버스를 다시 클릭하면 위치만 바뀝니다. 한글·영문 입력 후 Ctrl+Enter 또는 확인으로 넣습니다.
+            아래 칸에만 입력한 채로는 캔버스에 올라가지 않습니다. 확인 또는 Ctrl+Enter(Mac: ⌘+Enter)로 반영합니다. 캔버스를 다시
+            클릭하면 위치만 바뀝니다.
           </p>
           <textarea
             autoFocus
