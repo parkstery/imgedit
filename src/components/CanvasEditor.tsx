@@ -319,6 +319,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const iy = Math.floor(imgPos.y);
     const { image: img, shapes, color: fillHex } = state;
 
+    if (ix < 0 || iy < 0 || ix >= img.width || iy >= img.height) return;
+
     onPrepareImageUndo?.();
 
     const canvas = document.createElement('canvas');
