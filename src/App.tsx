@@ -51,6 +51,13 @@ export default function App() {
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
   const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
 
+  const getUndoEntryLabel = useCallback((entry: UndoEntry): string => {
+    if (entry.label) return entry.label;
+    if (entry.type === 'shape') return '도형 추가';
+    if (entry.type === 'imageMerge') return '붙여넣기 합성';
+    return '이미지 변경';
+  }, []);
+
   // Initialize with a blank white canvas
   useEffect(() => {
     const canvas = document.createElement('canvas');
@@ -151,7 +158,7 @@ export default function App() {
 
   const handlePrepareImageUndoForPaint = useCallback(() => {
     const snap = buildStateSnapshot(stateRef.current);
-    if (snap) appendUndoEntry({ type: 'image', snapshot: snap });
+    if (snap) appendUndoEntry({ type: 'image', snapshot: snap, label: '페인트통 채우기' });
   }, [buildStateSnapshot, appendUndoEntry]);
 
   const handleImageLoad = useCallback((file: File) => {
@@ -501,7 +508,7 @@ export default function App() {
 
     if (!s.image || asNew) {
       if (snapshot) {
-        appendUndoEntry({ type: 'image', snapshot });
+        appendUndoEntry({ type: 'image', snapshot, label: '붙여넣기 (새 이미지)' });
         pushPasteUndoSnapshot(snapshot);
       }
       setState(prev => ({
@@ -547,7 +554,7 @@ export default function App() {
       const mergedImg = new Image();
       mergedImg.onload = () => {
         if (snapshot) {
-          appendUndoEntry({ type: 'imageMerge', snapshot });
+          appendUndoEntry({ type: 'imageMerge', snapshot, label: '붙여넣기 (현재 이미지)' });
           pushPasteUndoSnapshot(snapshot);
         }
         setState(prev => ({ ...prev, image: mergedImg, selection: null }));
@@ -726,11 +733,36 @@ export default function App() {
               setState={setState} 
               onImageLoad={handleImageLoad}
               onPaste={() => handlePaste()}
-              onShapeCommitted={() => appendUndoEntry({ type: 'shape' })}
+              onShapeCommitted={(label) => appendUndoEntry({ type: 'shape', label })}
               onPrepareImageUndo={handlePrepareImageUndoForPaint}
             />
           </motion.div>
         </AnimatePresence>
+        <aside className="w-64 border-l border-neutral-800 bg-neutral-900/80 flex flex-col shrink-0">
+          <div className="px-3 py-2 border-b border-neutral-800 text-xs font-semibold text-neutral-300">
+            히스토리
+          </div>
+          <div className="px-3 py-2 border-b border-neutral-800 text-[11px] text-neutral-500">
+            Undo {undoStack.length} / Redo {redoStack.length}
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {undoStack.length === 0 ? (
+              <p className="text-xs text-neutral-500 px-1 py-2">기록된 작업이 없습니다.</p>
+            ) : (
+              undoStack
+                .slice(-30)
+                .reverse()
+                .map((entry, idx) => (
+                  <div
+                    key={`${entry.type}-${undoStack.length - idx}`}
+                    className="rounded border border-neutral-800 bg-neutral-950/70 px-2 py-1.5 text-xs text-neutral-300"
+                  >
+                    {getUndoEntryLabel(entry)}
+                  </div>
+                ))
+            )}
+          </div>
+        </aside>
       </main>
 
       <SaveModal 

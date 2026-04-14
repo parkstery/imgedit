@@ -9,7 +9,7 @@ interface CanvasEditorProps {
   setState: React.Dispatch<React.SetStateAction<EditorState>>;
   onImageLoad: (file: File) => void;
   onPaste: () => void;
-  onShapeCommitted?: () => void;
+  onShapeCommitted?: (label?: string) => void;
   /** 페인트통 등 비트맵 변경 직전에 Undo용 스냅샷을 쌓을 때 호출 */
   onPrepareImageUndo?: () => void;
 }
@@ -22,6 +22,23 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onShapeCommitted,
   onPrepareImageUndo,
 }) => {
+  const getShapeCommitLabel = useCallback((tool: EditorState['tool']) => {
+    switch (tool) {
+      case 'line':
+        return '선 그리기';
+      case 'rect':
+        return '사각형 그리기';
+      case 'ellipse':
+        return '원 그리기';
+      case 'polyline':
+        return '폴리라인';
+      case 'freehand':
+        return '자유그리기';
+      default:
+        return '도형 추가';
+    }
+  }, []);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
@@ -55,7 +72,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       return { ...prev, shapes: [...prev.shapes, shape], polylineDraft: null };
     });
     setPolyHover(null);
-    queueMicrotask(() => onShapeCommitted?.());
+    queueMicrotask(() => onShapeCommitted?.('폴리라인'));
   }, [setState, onShapeCommitted]);
 
   const commitFreehandDraft = useCallback(() => {
@@ -77,7 +94,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       };
       return { ...prev, shapes: [...prev.shapes, shape], freehandDraft: null };
     });
-    queueMicrotask(() => onShapeCommitted?.());
+    queueMicrotask(() => onShapeCommitted?.('자유그리기'));
   }, [setState, onShapeCommitted]);
 
   useEffect(() => {
@@ -307,7 +324,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         color: draft.color,
         lineWidth: draft.lineWidth,
       };
-      queueMicrotask(() => onShapeCommitted?.());
+      queueMicrotask(() => onShapeCommitted?.('자유그리기'));
       return { ...prev, shapes: [...prev.shapes, shape], freehandDraft: null };
     });
   };
@@ -473,7 +490,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         shapes: [...prev.shapes, prev.activeShape!],
         activeShape: null,
       }));
-      onShapeCommitted?.();
+      onShapeCommitted?.(getShapeCommitLabel(state.tool));
       queueMicrotask(() => {
         shapeEndGuardRef.current = false;
       });

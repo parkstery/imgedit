@@ -72,6 +72,6 @@ export interface ImageUndoSnapshot {
 
 /** image: 캔버스 전체 교체(새로 붙여넣기 등), imageMerge: 기존 이미지 위에 합성(부분 붙여넣기) */
 export type UndoEntry =
-  | { type: 'shape' }
-  | { type: 'image'; snapshot: ImageUndoSnapshot }
-  | { type: 'imageMerge'; snapshot: ImageUndoSnapshot };
+  | { type: 'shape'; label?: string }
+  | { type: 'image'; snapshot: ImageUndoSnapshot; label?: string }
+  | { type: 'imageMerge'; snapshot: ImageUndoSnapshot; label?: string };
