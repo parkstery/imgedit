@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { CanvasEditor } from './components/CanvasEditor';
 import { StatusBar } from './components/StatusBar';
@@ -53,7 +53,7 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     stateRef.current = state;
   }, [state]);
 
@@ -331,18 +331,21 @@ export default function App() {
 
   const processPastedImage = useCallback((img: HTMLImageElement, asNew: boolean = false) => {
     const s = stateRef.current;
-    if (!s.image && !asNew) return;
 
     let snapshot: ImageUndoSnapshot | null = null;
     if (s.image) {
-      snapshot = {
-        imageDataUrl: s.image.toDataURL(),
-        fileName: s.fileName,
-        shapes: s.shapes.map(sh => ({ ...sh })),
-        selection: s.selection ? { ...s.selection } : null,
-        zoom: s.zoom,
-        position: { ...s.position },
-      };
+      try {
+        snapshot = {
+          imageDataUrl: s.image.toDataURL(),
+          fileName: s.fileName,
+          shapes: s.shapes.map(sh => ({ ...sh })),
+          selection: s.selection ? { ...s.selection } : null,
+          zoom: s.zoom,
+          position: { ...s.position },
+        };
+      } catch {
+        snapshot = null;
+      }
     }
 
     if (!s.image || asNew) {
@@ -381,6 +384,14 @@ export default function App() {
         ctx.drawImage(img, x, y);
       }
 
+      let mergedDataUrl: string;
+      try {
+        mergedDataUrl = canvas.toDataURL();
+      } catch {
+        console.warn('이미지 붙여넣기 합성에 실패했습니다(캔버스 보안 제한 등).');
+        return;
+      }
+
       const mergedImg = new Image();
       mergedImg.onload = () => {
         if (snapshot) {
@@ -388,7 +399,7 @@ export default function App() {
         }
         setState(prev => ({ ...prev, image: mergedImg, selection: null }));
       };
-      mergedImg.src = canvas.toDataURL();
+      mergedImg.src = mergedDataUrl;
     }
   }, []);
 
