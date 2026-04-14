@@ -25,6 +25,7 @@ const INITIAL_STATE: EditorState = {
 export default function App() {
   const [state, setState] = useState<EditorState>(INITIAL_STATE);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const undoStackRef = useRef<UndoEntry[]>([]);
   const stateRef = useRef(state);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
@@ -57,11 +58,22 @@ export default function App() {
     stateRef.current = state;
   }, [state]);
 
+  useLayoutEffect(() => {
+    undoStackRef.current = undoStack;
+  }, [undoStack]);
+
+  const appendUndoEntry = useCallback((entry: UndoEntry) => {
+    const next = [...undoStackRef.current, entry];
+    undoStackRef.current = next;
+    setUndoStack(next);
+  }, []);
+
   const handleImageLoad = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
+        undoStackRef.current = [];
         setUndoStack([]);
         setState(prev => ({
           ...INITIAL_STATE,
@@ -143,40 +155,42 @@ export default function App() {
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
 
   const handleDeleteLastShape = useCallback(() => {
-    setUndoStack(prevStack => {
-      if (prevStack.length === 0) {
-        setState(s => {
-          if (s.shapes.length === 0) return s;
-          return { ...s, shapes: s.shapes.slice(0, -1) };
-        });
-        return prevStack;
-      }
-      const last = prevStack[prevStack.length - 1];
-      const nextStack = prevStack.slice(0, -1);
-      if (last.type === 'shape') {
-        setState(s => ({ ...s, shapes: s.shapes.slice(0, -1) }));
-      } else {
-        const snap = last.snapshot;
-        const img = new Image();
-        img.onload = () => {
-          setState(prev => ({
-            ...prev,
-            image: img,
-            fileName: snap.fileName,
-            shapes: snap.shapes.map(sh => ({ ...sh })),
-            selection: snap.selection ? { ...snap.selection } : null,
-            zoom: snap.zoom,
-            position: { ...snap.position },
-          }));
-        };
-        img.src = snap.imageDataUrl;
-      }
-      return nextStack;
-    });
+    const prevStack = undoStackRef.current;
+    if (prevStack.length === 0) {
+      setState(s => {
+        if (s.shapes.length === 0) return s;
+        return { ...s, shapes: s.shapes.slice(0, -1) };
+      });
+      return;
+    }
+    const last = prevStack[prevStack.length - 1];
+    const nextStack = prevStack.slice(0, -1);
+    undoStackRef.current = nextStack;
+    setUndoStack(nextStack);
+    if (last.type === 'shape') {
+      setState(s => ({ ...s, shapes: s.shapes.slice(0, -1) }));
+    } else {
+      const snap = last.snapshot;
+      const img = new Image();
+      img.onload = () => {
+        setState(prev => ({
+          ...prev,
+          image: img,
+          fileName: snap.fileName,
+          shapes: snap.shapes.map(sh => ({ ...sh })),
+          selection: snap.selection ? { ...snap.selection } : null,
+          zoom: snap.zoom,
+          position: { ...snap.position },
+        }));
+      };
+      img.src = snap.imageDataUrl;
+    }
   }, []);
 
   const handleClearShapes = () => {
-    setUndoStack(prev => prev.filter(e => e.type !== 'shape'));
+    const next = undoStackRef.current.filter(e => e.type !== 'shape');
+    undoStackRef.current = next;
+    setUndoStack(next);
     setState(prev => ({ ...prev, shapes: [] }));
   };
 
@@ -350,7 +364,7 @@ export default function App() {
 
     if (!s.image || asNew) {
       if (snapshot) {
-        setUndoStack(st => [...st, { type: 'image', snapshot }]);
+        appendUndoEntry({ type: 'image', snapshot });
       }
       setState(prev => ({
         ...prev,
@@ -395,13 +409,13 @@ export default function App() {
       const mergedImg = new Image();
       mergedImg.onload = () => {
         if (snapshot) {
-          setUndoStack(st => [...st, { type: 'image', snapshot }]);
+          appendUndoEntry({ type: 'image', snapshot });
         }
         setState(prev => ({ ...prev, image: mergedImg, selection: null }));
       };
       mergedImg.src = mergedDataUrl;
     }
-  }, []);
+  }, [appendUndoEntry]);
 
   const handlePaste = useCallback(async (clipboardData?: DataTransfer, asNew: boolean = false) => {
     try {
@@ -536,7 +550,7 @@ export default function App() {
               setState={setState} 
               onImageLoad={handleImageLoad}
               onPaste={() => handlePaste()}
-              onShapeCommitted={() => setUndoStack(st => [...st, { type: 'shape' }])}
+              onShapeCommitted={() => appendUndoEntry({ type: 'shape' })}
             />
           </motion.div>
         </AnimatePresence>
