@@ -19,6 +19,7 @@ import {
   Undo2,
   Redo2,
   PaintBucket,
+  Palette,
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -291,6 +292,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
         </div>
         <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0">
+          <label
+            className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80"
+            title="고급 색상 선택"
+          >
+            <div className="absolute inset-0 bg-[conic-gradient(from_0deg,red,yellow,lime,cyan,blue,magenta,red)]" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-white/45" />
+            <div className="absolute inset-0 flex items-center justify-center text-white/90">
+              <Palette size={12} />
+            </div>
+            <input
+              type="color"
+              value={state.color}
+              onChange={(e) => onColorChange(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              aria-label="고급 색상 선택"
+            />
+          </label>
           {PAINT_PALETTE.map((c) => (
             <button
               key={c}
