@@ -309,6 +309,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               aria-label="고급 색상 선택"
             />
           </label>
+          <input
+            type="text"
+            readOnly
+            value={state.color.toLowerCase()}
+            title="현재 색상 HEX 값"
+            className="w-20 h-5 bg-neutral-900 border border-neutral-700 rounded px-1 text-[10px] text-neutral-200 font-mono select-text cursor-text"
+          />
           {PAINT_PALETTE.map((c) => (
             <button
               key={c}
