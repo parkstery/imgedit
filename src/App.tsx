@@ -17,7 +17,7 @@ const INITIAL_STATE: EditorState = {
   image: null,
   fileName: null,
   tool: 'select',
-  color: '#3b82f6',
+  color: '#ff0000',
   shapes: [],
   activeShape: null,
 };
@@ -134,6 +134,7 @@ export default function App() {
 
   const handleToolChange = (tool: EditorState['tool']) => setState(prev => ({ ...prev, tool, selection: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
+
   const handleDeleteLastShape = () => setState(prev => ({ ...prev, shapes: prev.shapes.slice(0, -1) }));
   const handleClearShapes = () => setState(prev => ({ ...prev, shapes: [] }));
 
@@ -405,6 +406,12 @@ export default function App() {
             e.preventDefault();
             handleOpen();
             break;
+          case 'z':
+            if (!e.shiftKey) {
+              e.preventDefault();
+              handleDeleteLastShape();
+            }
+            break;
         }
       }
     };
@@ -424,7 +431,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave]);
+  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave, handleDeleteLastShape]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
