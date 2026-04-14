@@ -50,6 +50,9 @@ export interface EditorState {
   tool: Tool;
   color: string;
   lineWidth: number;
+  baseLayerVisible: boolean;
+  shapeLayerVisible: boolean;
+  activeLayer: 'base' | 'shape';
   shapes: Shape[];
   activeShape: Shape | null;
   /** 폴리라인 그리는 중 (클릭으로 점 추가, Enter·우클릭으로 완료) */
@@ -68,6 +71,9 @@ export interface ImageUndoSnapshot {
   selection: Rect | null;
   zoom: number;
   position: Point;
+  baseLayerVisible?: boolean;
+  shapeLayerVisible?: boolean;
+  activeLayer?: 'base' | 'shape';
 }
 
 /** image: 캔버스 전체 교체(새로 붙여넣기 등), imageMerge: 기존 이미지 위에 합성(부분 붙여넣기) */

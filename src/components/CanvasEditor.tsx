@@ -1,7 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { EditorState, Point, Rect, Shape } from '../types';
 import { cn } from '../lib/utils';
-import { strokeShapesOnContext } from '../lib/drawShapes';
 import { floodFillImageData, hexToRgba } from '../lib/floodFill';
 
 interface CanvasEditorProps {
@@ -143,76 +142,80 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     ctx.translate(state.position.x, state.position.y);
     ctx.scale(state.zoom, state.zoom);
 
-    ctx.drawImage(state.image, 0, 0);
+    if (state.baseLayerVisible) {
+      ctx.drawImage(state.image, 0, 0);
+    }
 
-    state.shapes.forEach(shape => {
-      ctx.strokeStyle = shape.color;
-      ctx.lineWidth = shape.lineWidth / state.zoom;
-      ctx.beginPath();
-      if (shape.type === 'line') {
-        ctx.moveTo(shape.x1, shape.y1);
-        ctx.lineTo(shape.x2, shape.y2);
-      } else if (shape.type === 'rect') {
-        ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
-      } else if (shape.type === 'ellipse') {
-        const rx = Math.abs(shape.x2 - shape.x1) / 2;
-        const ry = Math.abs(shape.y2 - shape.y1) / 2;
-        const cx = (shape.x1 + shape.x2) / 2;
-        const cy = (shape.y1 + shape.y2) / 2;
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
-        ctx.moveTo(shape.points[0].x, shape.points[0].y);
-        for (let i = 1; i < shape.points.length; i++) {
-          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+    if (state.shapeLayerVisible) {
+      state.shapes.forEach(shape => {
+        ctx.strokeStyle = shape.color;
+        ctx.lineWidth = shape.lineWidth / state.zoom;
+        ctx.beginPath();
+        if (shape.type === 'line') {
+          ctx.moveTo(shape.x1, shape.y1);
+          ctx.lineTo(shape.x2, shape.y2);
+        } else if (shape.type === 'rect') {
+          ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
+        } else if (shape.type === 'ellipse') {
+          const rx = Math.abs(shape.x2 - shape.x1) / 2;
+          const ry = Math.abs(shape.y2 - shape.y1) / 2;
+          const cx = (shape.x1 + shape.x2) / 2;
+          const cy = (shape.y1 + shape.y2) / 2;
+          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
+          ctx.moveTo(shape.points[0].x, shape.points[0].y);
+          for (let i = 1; i < shape.points.length; i++) {
+            ctx.lineTo(shape.points[i].x, shape.points[i].y);
+          }
         }
-      }
-      ctx.stroke();
-    });
+        ctx.stroke();
+      });
 
-    if (state.activeShape) {
-      ctx.strokeStyle = state.activeShape.color;
-      ctx.lineWidth = state.activeShape.lineWidth / state.zoom;
-      ctx.beginPath();
-      if (state.activeShape.type === 'line') {
-        ctx.moveTo(state.activeShape.x1, state.activeShape.y1);
-        ctx.lineTo(state.activeShape.x2, state.activeShape.y2);
-      } else if (state.activeShape.type === 'rect') {
-        ctx.strokeRect(state.activeShape.x1, state.activeShape.y1, state.activeShape.x2 - state.activeShape.x1, state.activeShape.y2 - state.activeShape.y1);
-      } else if (state.activeShape.type === 'ellipse') {
-        const rx = Math.abs(state.activeShape.x2 - state.activeShape.x1) / 2;
-        const ry = Math.abs(state.activeShape.y2 - state.activeShape.y1) / 2;
-        const cx = (state.activeShape.x1 + state.activeShape.x2) / 2;
-        const cy = (state.activeShape.y1 + state.activeShape.y2) / 2;
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      if (state.activeShape) {
+        ctx.strokeStyle = state.activeShape.color;
+        ctx.lineWidth = state.activeShape.lineWidth / state.zoom;
+        ctx.beginPath();
+        if (state.activeShape.type === 'line') {
+          ctx.moveTo(state.activeShape.x1, state.activeShape.y1);
+          ctx.lineTo(state.activeShape.x2, state.activeShape.y2);
+        } else if (state.activeShape.type === 'rect') {
+          ctx.strokeRect(state.activeShape.x1, state.activeShape.y1, state.activeShape.x2 - state.activeShape.x1, state.activeShape.y2 - state.activeShape.y1);
+        } else if (state.activeShape.type === 'ellipse') {
+          const rx = Math.abs(state.activeShape.x2 - state.activeShape.x1) / 2;
+          const ry = Math.abs(state.activeShape.y2 - state.activeShape.y1) / 2;
+          const cx = (state.activeShape.x1 + state.activeShape.x2) / 2;
+          const cy = (state.activeShape.y1 + state.activeShape.y2) / 2;
+          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
-    }
 
-    if (state.polylineDraft && state.polylineDraft.points.length > 0) {
-      const pts = state.polylineDraft.points;
-      ctx.strokeStyle = state.polylineDraft.color;
-      ctx.lineWidth = state.polylineDraft.lineWidth / state.zoom;
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x, pts[i].y);
+      if (state.polylineDraft && state.polylineDraft.points.length > 0) {
+        const pts = state.polylineDraft.points;
+        ctx.strokeStyle = state.polylineDraft.color;
+        ctx.lineWidth = state.polylineDraft.lineWidth / state.zoom;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        if (polyHover) {
+          ctx.lineTo(polyHover.x, polyHover.y);
+        }
+        ctx.stroke();
       }
-      if (polyHover) {
-        ctx.lineTo(polyHover.x, polyHover.y);
-      }
-      ctx.stroke();
-    }
 
-    if (state.freehandDraft && state.freehandDraft.points.length > 1) {
-      const pts = state.freehandDraft.points;
-      ctx.strokeStyle = state.freehandDraft.color;
-      ctx.lineWidth = state.freehandDraft.lineWidth / state.zoom;
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i].x, pts[i].y);
+      if (state.freehandDraft && state.freehandDraft.points.length > 1) {
+        const pts = state.freehandDraft.points;
+        ctx.strokeStyle = state.freehandDraft.color;
+        ctx.lineWidth = state.freehandDraft.lineWidth / state.zoom;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     }
 
     if (state.selection) {
@@ -267,6 +270,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handlePolylineClick = (e: React.MouseEvent) => {
     if (state.tool !== 'polyline' || !state.image) return;
+    if (state.activeLayer !== 'shape' || !state.shapeLayerVisible) return;
     const imgPos = toImageCoords(getMousePos(e));
     setState(prev => {
       if (prev.tool !== 'polyline') return prev;
@@ -293,6 +297,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleFreehandClick = (e: React.MouseEvent) => {
     if (state.tool !== 'freehand' || !state.image) return;
+    if (state.activeLayer !== 'shape' || !state.shapeLayerVisible) return;
     const imgPos = toImageCoords(getMousePos(e));
     setState(prev => {
       if (prev.tool !== 'freehand') return prev;
@@ -331,10 +336,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleFillClick = (e: React.MouseEvent) => {
     if (state.tool !== 'fill' || !state.image) return;
+    if (state.activeLayer !== 'base' || !state.baseLayerVisible) return;
     const imgPos = toImageCoords(getMousePos(e));
     const ix = Math.floor(imgPos.x);
     const iy = Math.floor(imgPos.y);
-    const { image: img, shapes, color: fillHex } = state;
+    const { image: img, color: fillHex } = state;
 
     if (ix < 0 || iy < 0 || ix >= img.width || iy >= img.height) return;
 
@@ -347,7 +353,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(img, 0, 0);
-    strokeShapesOnContext(ctx, shapes);
 
     let imageData: ImageData;
     try {
@@ -374,7 +379,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setState(prev => ({
         ...prev,
         image: nextImg,
-        shapes: [],
         selection: null,
         polylineDraft: null,
         freehandDraft: null,
@@ -395,7 +399,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     } else if (e.button === 0) {
       if (state.tool === 'select') {
         setState(prev => ({ ...prev, isSelecting: true, selection: null }));
-      } else if (state.tool !== 'polyline' && state.tool !== 'freehand' && state.tool !== 'fill') {
+      } else if (
+        state.tool !== 'polyline' &&
+        state.tool !== 'freehand' &&
+        state.tool !== 'fill' &&
+        state.activeLayer === 'shape' &&
+        state.shapeLayerVisible
+      ) {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
@@ -423,7 +433,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setPolyHover(null);
     }
 
-    if (state.tool === 'freehand' && state.freehandDraft) {
+    if (state.tool === 'freehand' && state.freehandDraft && state.activeLayer === 'shape' && state.shapeLayerVisible) {
       const current = toImageCoords(pos);
       setState(prev => {
         if (!prev.freehandDraft || prev.tool !== 'freehand') return prev;

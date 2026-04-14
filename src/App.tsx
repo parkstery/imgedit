@@ -21,6 +21,59 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   return !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
 }
 
+function imageToDataUrlSafe(image: HTMLImageElement): string | undefined {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return undefined;
+  try {
+    ctx.drawImage(image, 0, 0);
+    return canvas.toDataURL();
+  } catch {
+    return undefined;
+  }
+}
+
+function LayerRow({
+  name,
+  visible,
+  active,
+  onToggleVisible,
+  onSelect,
+}: {
+  name: string;
+  visible: boolean;
+  active: boolean;
+  onToggleVisible: (visible: boolean) => void;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 rounded border px-2 py-1.5 text-xs ${
+        active ? 'border-blue-500/60 bg-blue-500/10 text-blue-300' : 'border-neutral-800 bg-neutral-950/70 text-neutral-300'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onToggleVisible(!visible)}
+        className="w-6 h-5 rounded border border-neutral-700 text-[10px] hover:bg-neutral-800"
+        title={visible ? '레이어 숨기기' : '레이어 표시'}
+      >
+        {visible ? 'ON' : 'OFF'}
+      </button>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex-1 text-left truncate"
+        title="활성 레이어로 선택"
+      >
+        {name}
+      </button>
+    </div>
+  );
+}
+
 const INITIAL_STATE: EditorState = {
   zoom: 1,
   position: { x: 0, y: 0 },
@@ -32,6 +85,9 @@ const INITIAL_STATE: EditorState = {
   tool: 'select',
   color: '#ff0000',
   lineWidth: 2,
+  baseLayerVisible: true,
+  shapeLayerVisible: true,
+  activeLayer: 'shape',
   shapes: [],
   activeShape: null,
   polylineDraft: null,
@@ -116,6 +172,9 @@ export default function App() {
       selection: snap.selection ? { ...snap.selection } : null,
       zoom: snap.zoom,
       position: { ...snap.position },
+      baseLayerVisible: snap.baseLayerVisible ?? true,
+      shapeLayerVisible: snap.shapeLayerVisible ?? true,
+      activeLayer: snap.activeLayer ?? 'shape',
     };
 
     if (snap.imageDataUrl) {
@@ -139,12 +198,7 @@ export default function App() {
 
   const buildStateSnapshot = useCallback((source: EditorState): ImageUndoSnapshot | null => {
     if (!source.image) return null;
-    let imageDataUrl: string | undefined;
-    try {
-      imageDataUrl = source.image.toDataURL();
-    } catch {
-      /* cross-origin 등으로 toDataURL 불가한 경우 imageElement만으로 복구 */
-    }
+    const imageDataUrl = imageToDataUrlSafe(source.image);
     return {
       ...(imageDataUrl ? { imageDataUrl } : {}),
       imageElement: source.image,
@@ -153,6 +207,9 @@ export default function App() {
       selection: source.selection ? { ...source.selection } : null,
       zoom: source.zoom,
       position: { ...source.position },
+      baseLayerVisible: source.baseLayerVisible,
+      shapeLayerVisible: source.shapeLayerVisible,
+      activeLayer: source.activeLayer,
     };
   }, []);
 
@@ -209,33 +266,37 @@ export default function App() {
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-    
-    ctx.drawImage(state.image, 0, 0);
-    
-    // Draw shapes on export
-    state.shapes.forEach(shape => {
-      ctx.strokeStyle = shape.color;
-      ctx.lineWidth = shape.lineWidth;
-      ctx.beginPath();
-      if (shape.type === 'line') {
-        ctx.moveTo(shape.x1, shape.y1);
-        ctx.lineTo(shape.x2, shape.y2);
-      } else if (shape.type === 'rect') {
-        ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
-      } else if (shape.type === 'ellipse') {
-        const rx = Math.abs(shape.x2 - shape.x1) / 2;
-        const ry = Math.abs(shape.y2 - shape.y1) / 2;
-        const cx = (shape.x1 + shape.x2) / 2;
-        const cy = (shape.y1 + shape.y2) / 2;
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
-        ctx.moveTo(shape.points[0].x, shape.points[0].y);
-        for (let i = 1; i < shape.points.length; i++) {
-          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+
+    if (state.baseLayerVisible) {
+      ctx.drawImage(state.image, 0, 0);
+    }
+
+    if (state.shapeLayerVisible) {
+      // Draw shapes on export
+      state.shapes.forEach(shape => {
+        ctx.strokeStyle = shape.color;
+        ctx.lineWidth = shape.lineWidth;
+        ctx.beginPath();
+        if (shape.type === 'line') {
+          ctx.moveTo(shape.x1, shape.y1);
+          ctx.lineTo(shape.x2, shape.y2);
+        } else if (shape.type === 'rect') {
+          ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
+        } else if (shape.type === 'ellipse') {
+          const rx = Math.abs(shape.x2 - shape.x1) / 2;
+          const ry = Math.abs(shape.y2 - shape.y1) / 2;
+          const cx = (shape.x1 + shape.x2) / 2;
+          const cy = (shape.y1 + shape.y2) / 2;
+          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
+          ctx.moveTo(shape.points[0].x, shape.points[0].y);
+          for (let i = 1; i < shape.points.length; i++) {
+            ctx.lineTo(shape.points[i].x, shape.points[i].y);
+          }
         }
-      }
-      ctx.stroke();
-    });
+        ctx.stroke();
+      });
+    }
     
     const extension = format.split('/')[1];
     const finalFilename = filename || `edited-${state.fileName?.split('.')[0] || 'image'}.${extension}`;
@@ -256,6 +317,14 @@ export default function App() {
     setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null, freehandDraft: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
+  const handleSetLayerVisible = (layer: 'base' | 'shape', visible: boolean) =>
+    setState(prev =>
+      layer === 'base'
+        ? { ...prev, baseLayerVisible: visible }
+        : { ...prev, shapeLayerVisible: visible }
+    );
+  const handleSetActiveLayer = (layer: 'base' | 'shape') =>
+    setState(prev => ({ ...prev, activeLayer: layer }));
 
   const handleDeleteLastShape = useCallback(() => {
     const undoPoint = buildStateSnapshot(stateRef.current);
@@ -487,12 +556,7 @@ export default function App() {
 
     const buildPasteSnapshot = (): ImageUndoSnapshot | null => {
       if (!s.image) return null;
-      let imageDataUrl: string | undefined;
-      try {
-        imageDataUrl = s.image.toDataURL();
-      } catch {
-        /* 교차 출처 등으로 픽셀 읽기 불가 → imageElement만으로 복구 */
-      }
+      const imageDataUrl = imageToDataUrlSafe(s.image);
       return {
         ...(imageDataUrl ? { imageDataUrl } : {}),
         imageElement: s.image,
@@ -501,6 +565,9 @@ export default function App() {
         selection: s.selection ? { ...s.selection } : null,
         zoom: s.zoom,
         position: { ...s.position },
+        baseLayerVisible: s.baseLayerVisible,
+        shapeLayerVisible: s.shapeLayerVisible,
+        activeLayer: s.activeLayer,
       };
     };
 
@@ -517,6 +584,9 @@ export default function App() {
         fileName: 'pasted-image.png',
         zoom: 1,
         position: { x: 50, y: 50 },
+        baseLayerVisible: true,
+        shapeLayerVisible: true,
+        activeLayer: 'shape',
         shapes: [],
         selection: null
       }));
@@ -761,6 +831,25 @@ export default function App() {
                   </div>
                 ))
             )}
+          </div>
+          <div className="border-t border-neutral-800">
+            <div className="px-3 py-2 text-xs font-semibold text-neutral-300">레이어</div>
+            <div className="px-2 pb-2 space-y-1">
+              <LayerRow
+                name="배경 이미지"
+                visible={state.baseLayerVisible}
+                active={state.activeLayer === 'base'}
+                onToggleVisible={(v) => handleSetLayerVisible('base', v)}
+                onSelect={() => handleSetActiveLayer('base')}
+              />
+              <LayerRow
+                name="도형"
+                visible={state.shapeLayerVisible}
+                active={state.activeLayer === 'shape'}
+                onToggleVisible={(v) => handleSetLayerVisible('shape', v)}
+                onSelect={() => handleSetActiveLayer('shape')}
+              />
+            </div>
           </div>
         </aside>
       </main>
