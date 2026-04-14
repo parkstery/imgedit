@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   FolderOpen, 
   Save, 
@@ -119,28 +120,42 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onPaste
 }) => {
   const [isLineWidthOpen, setIsLineWidthOpen] = useState(false);
+  const lineWidthButtonRef = useRef<HTMLButtonElement>(null);
   const lineWidthMenuRef = useRef<HTMLDivElement>(null);
+  const [lineWidthMenuPos, setLineWidthMenuPos] = useState({ top: 0, left: 0 });
   const lineWidthOptions = useMemo(
     () => [
-      { level: 1, width: 1 },
-      { level: 2, width: 2 },
-      { level: 3, width: 4 },
-      { level: 4, width: 6 },
-      { level: 5, width: 8 },
-      { level: 6, width: 12 },
+      { width: 2 },
+      { width: 4 },
+      { width: 6 },
+      { width: 8 },
+      { width: 10 },
     ],
     []
   );
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (!lineWidthMenuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const insideMenu = lineWidthMenuRef.current?.contains(target);
+      const insideButton = lineWidthButtonRef.current?.contains(target);
+      if (!insideMenu && !insideButton) {
         setIsLineWidthOpen(false);
       }
     };
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  useEffect(() => {
+    if (!isLineWidthOpen) return;
+    const buttonRect = lineWidthButtonRef.current?.getBoundingClientRect();
+    if (!buttonRect) return;
+    setLineWidthMenuPos({
+      left: buttonRect.left,
+      top: buttonRect.bottom + 4,
+    });
+  }, [isLineWidthOpen]);
 
   return (
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto no-scrollbar">
@@ -193,8 +208,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             className="w-6 h-6 rounded cursor-pointer bg-transparent border-none"
             title="색상 선택"
           />
-          <div className="relative" ref={lineWidthMenuRef}>
+          <div className="relative">
             <button
+              ref={lineWidthButtonRef}
               onClick={() => setIsLineWidthOpen(prev => !prev)}
               title="선두께"
               className="h-7 px-2 rounded-md transition-colors flex items-center gap-1 text-xs text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600"
@@ -203,9 +219,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <span className="text-neutral-300">{state.lineWidth}px</span>
               <ChevronDown size={14} className={cn("transition-transform", isLineWidthOpen && "rotate-180")} />
             </button>
-            {isLineWidthOpen && (
-              <div className="absolute left-0 top-full mt-1 w-36 rounded-md border border-neutral-700 bg-neutral-900 shadow-xl z-20 py-1">
-                {lineWidthOptions.map(({ level, width }) => (
+            {isLineWidthOpen && createPortal(
+              <div
+                ref={lineWidthMenuRef}
+                className="fixed w-36 rounded-md border border-neutral-700 bg-neutral-900 shadow-xl z-[9999] py-1"
+                style={{ left: lineWidthMenuPos.left, top: lineWidthMenuPos.top }}
+              >
+                {lineWidthOptions.map(({ width }) => (
                   <button
                     key={width}
                     onClick={() => {
@@ -217,11 +237,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                       state.lineWidth === width ? "text-blue-400" : "text-neutral-200"
                     )}
                   >
-                    <span>{level}단계</span>
-                    <span>{width}px</span>
+                    <span className="w-8">{width}</span>
+                    <svg width="48" height="14" viewBox="0 0 48 14" aria-hidden>
+                      <line
+                        x1="2"
+                        y1="7"
+                        x2="46"
+                        y2="7"
+                        stroke="currentColor"
+                        strokeWidth={width}
+                        strokeLinecap="round"
+                      />
+                    </svg>
                   </button>
                 ))}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
           <ToolbarButton 
