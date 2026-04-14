@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React from 'react';
 import { 
   FolderOpen, 
   Save, 
@@ -18,7 +18,6 @@ import {
   Trash2,
   Undo2,
   Redo2,
-  ChevronDown
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -124,32 +123,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCut,
   onPaste
 }) => {
-  const [isLineWidthOpen, setIsLineWidthOpen] = useState(false);
-  const lineWidthMenuRef = useRef<HTMLDivElement>(null);
-  const lineWidthOptions = useMemo(
-    () => [
-      { width: 2 },
-      { width: 4 },
-      { width: 6 },
-      { width: 8 },
-      { width: 10 },
-    ],
-    []
-  );
-
-  useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      const target = event.target as Node;
-      const insideMenu = lineWidthMenuRef.current?.contains(target);
-      const insideButton = (target as HTMLElement).closest('[data-line-width-button]');
-      if (!insideMenu && !insideButton) {
-        setIsLineWidthOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', handleOutsideClick);
-    return () => window.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
-
   return (
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
@@ -207,50 +180,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             className="w-6 h-6 rounded cursor-pointer bg-transparent border-none"
             title="색상 선택"
           />
-          <div className="relative">
-            <button
-              data-line-width-button
-              onClick={() => setIsLineWidthOpen(prev => !prev)}
-              title="선두께"
-              className="h-7 px-2 rounded-md transition-colors flex items-center gap-1 text-xs text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600"
-            >
-              <span>선두께</span>
-              <span className="text-neutral-300">{state.lineWidth}px</span>
-              <ChevronDown size={14} className={cn("transition-transform", isLineWidthOpen && "rotate-180")} />
-            </button>
-            {isLineWidthOpen && (
-              <div
-                ref={lineWidthMenuRef}
-                className="absolute left-0 top-full mt-1 w-36 rounded-md border border-neutral-700 bg-neutral-900 shadow-xl z-40 py-1"
-              >
-                {lineWidthOptions.map(({ width }) => (
-                  <button
-                    key={width}
-                    onClick={() => {
-                      onLineWidthChange(width);
-                      setIsLineWidthOpen(false);
-                    }}
-                    className={cn(
-                      "w-full px-2.5 py-1.5 text-left text-xs flex items-center justify-between hover:bg-neutral-800",
-                      state.lineWidth === width ? "text-blue-400" : "text-neutral-200"
-                    )}
-                  >
-                    <span className="w-8">{width}</span>
-                    <svg width="48" height="14" viewBox="0 0 48 14" aria-hidden>
-                      <line
-                        x1="2"
-                        y1="7"
-                        x2="46"
-                        y2="7"
-                        stroke="currentColor"
-                        strokeWidth={width}
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="flex items-center gap-1 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1">
+            <span className="text-xs text-neutral-300">선두께</span>
+            <input
+              type="number"
+              min="1"
+              max="50"
+              step="1"
+              value={state.lineWidth}
+              onChange={(e) => onLineWidthChange(Math.max(1, Math.min(50, parseInt(e.target.value || '1', 10))))}
+              className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              title="선두께 (위/아래 화살표로 조절)"
+            />
           </div>
           <ToolbarButton 
             onClick={onDeleteLastShape} 
