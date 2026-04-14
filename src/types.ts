@@ -52,6 +52,8 @@ export interface EditorState {
   lineWidth: number;
   /** 페인트통 채우기 색 일치 허용 오차 (0~100, 채널별) */
   fillTolerance: number;
+  /** true면 채우기 영역 판별 시 RGB만 비교하고 알파는 무시 */
+  fillIgnoreAlpha: boolean;
   baseLayerVisible: boolean;
   shapeLayerVisible: boolean;
   activeLayer: 'base' | 'shape';

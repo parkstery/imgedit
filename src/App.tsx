@@ -6,6 +6,12 @@ import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
 import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry } from './types';
+import {
+  readFillTolerance,
+  readFillIgnoreAlpha,
+  writeFillTolerance,
+  writeFillIgnoreAlpha,
+} from './lib/fillToolStorage';
 import { motion, AnimatePresence } from 'motion/react';
 
 function shapeToBoundsRect(shape: { x1: number; y1: number; x2: number; y2: number }): Rect {
@@ -86,6 +92,7 @@ const INITIAL_STATE: EditorState = {
   color: '#ff0000',
   lineWidth: 2,
   fillTolerance: 40,
+  fillIgnoreAlpha: false,
   baseLayerVisible: true,
   shapeLayerVisible: true,
   activeLayer: 'shape',
@@ -95,8 +102,18 @@ const INITIAL_STATE: EditorState = {
   freehandDraft: null,
 };
 
+function loadFillToolPrefsFromStorage(): Pick<EditorState, 'fillTolerance' | 'fillIgnoreAlpha'> {
+  return {
+    fillTolerance: readFillTolerance(INITIAL_STATE.fillTolerance),
+    fillIgnoreAlpha: readFillIgnoreAlpha(INITIAL_STATE.fillIgnoreAlpha),
+  };
+}
+
 export default function App() {
-  const [state, setState] = useState<EditorState>(INITIAL_STATE);
+  const [state, setState] = useState<EditorState>(() => ({
+    ...INITIAL_STATE,
+    ...loadFillToolPrefsFromStorage(),
+  }));
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const undoStackRef = useRef<UndoEntry[]>([]);
   const [redoStack, setRedoStack] = useState<ImageUndoSnapshot[]>([]);
@@ -231,6 +248,8 @@ export default function App() {
         setRedoStack([]);
         setState(prev => ({
           ...INITIAL_STATE,
+          fillTolerance: prev.fillTolerance,
+          fillIgnoreAlpha: prev.fillIgnoreAlpha,
           image: img,
           fileName: file.name,
           // Center image initially
@@ -318,8 +337,15 @@ export default function App() {
     setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null, freehandDraft: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
-  const handleFillToleranceChange = (fillTolerance: number) =>
-    setState(prev => ({ ...prev, fillTolerance: Math.max(0, Math.min(100, Math.round(fillTolerance))) }));
+  const handleFillToleranceChange = (fillTolerance: number) => {
+    const next = Math.max(0, Math.min(100, Math.round(fillTolerance)));
+    writeFillTolerance(next);
+    setState(prev => ({ ...prev, fillTolerance: next }));
+  };
+  const handleFillIgnoreAlphaChange = (fillIgnoreAlpha: boolean) => {
+    writeFillIgnoreAlpha(fillIgnoreAlpha);
+    setState(prev => ({ ...prev, fillIgnoreAlpha }));
+  };
   const handleSetLayerVisible = (layer: 'base' | 'shape', visible: boolean) =>
     setState(prev =>
       layer === 'base'
@@ -783,6 +809,7 @@ export default function App() {
         onColorChange={handleColorChange}
         onLineWidthChange={handleLineWidthChange}
         onFillToleranceChange={handleFillToleranceChange}
+        onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}
         canUndoLast={undoStack.length > 0 || state.shapes.length > 0}

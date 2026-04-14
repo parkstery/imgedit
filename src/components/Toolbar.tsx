@@ -109,6 +109,7 @@ interface ToolbarProps {
   onColorChange: (color: string) => void;
   onLineWidthChange: (lineWidth: number) => void;
   onFillToleranceChange: (tolerance: number) => void;
+  onFillIgnoreAlphaChange: (ignoreAlpha: boolean) => void;
   onDeleteLastShape: () => void;
   onRedoLastShape: () => void;
   canUndoLast: boolean;
@@ -134,6 +135,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onColorChange,
   onLineWidthChange,
   onFillToleranceChange,
+  onFillIgnoreAlphaChange,
   onDeleteLastShape,
   onRedoLastShape,
   canUndoLast,
@@ -198,19 +200,47 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           active={state.tool === 'fill'}
         />
         {state.tool === 'fill' && (
-          <div className="flex items-center gap-1.5 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0">
-            <span className="text-[10px] text-neutral-400 whitespace-nowrap">톨러런스</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={state.fillTolerance}
-              onChange={(e) => onFillToleranceChange(parseInt(e.target.value, 10))}
-              className="w-20 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              title="페인트통 색 일치 허용 오차 (높을수록 넓게 채움)"
-            />
-            <span className="text-[10px] text-neutral-400 w-6 tabular-nums text-right">{state.fillTolerance}</span>
+          <div
+            className="flex items-center gap-2 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
+            role="group"
+            aria-label="페인트통 옵션"
+          >
+            <div className="flex items-center gap-1.5">
+              <span id="fill-tolerance-label" className="text-[10px] text-neutral-400 whitespace-nowrap">
+                톨러런스
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={state.fillTolerance}
+                onChange={(e) => onFillToleranceChange(parseInt(e.target.value, 10))}
+                className="w-20 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                title="페인트통 색 일치 허용 오차 (높을수록 넓게 채움)"
+                aria-labelledby="fill-tolerance-label"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={state.fillTolerance}
+                aria-valuetext={`${state.fillTolerance}, 전체 범위 0에서 100`}
+              />
+              <span className="text-[10px] text-neutral-400 w-6 tabular-nums text-right" aria-hidden>
+                {state.fillTolerance}
+              </span>
+            </div>
+            <label
+              className="flex items-center gap-1 cursor-pointer select-none shrink-0"
+              title="켜면 채우기 영역 판별 시 RGB만 비교합니다. 반투명·안티앨리어싱 경계에 유리합니다."
+            >
+              <input
+                id="fill-ignore-alpha"
+                type="checkbox"
+                checked={state.fillIgnoreAlpha}
+                onChange={(e) => onFillIgnoreAlphaChange(e.target.checked)}
+                className="rounded border-neutral-600 bg-neutral-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+              />
+              <span className="text-[10px] text-neutral-400 whitespace-nowrap">알파 무시</span>
+            </label>
           </div>
         )}
         

@@ -363,7 +363,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
 
     const fill = hexToRgba(fillHex);
-    floodFillImageData(imageData, ix, iy, fill, state.fillTolerance);
+    floodFillImageData(imageData, ix, iy, fill, state.fillTolerance, {
+      ignoreAlpha: state.fillIgnoreAlpha,
+    });
     ctx.putImageData(imageData, 0, 0);
 
     let dataUrl: string;
