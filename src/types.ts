@@ -10,9 +10,16 @@ export interface Rect {
   height: number;
 }
 
-export type Tool = 'select' | 'line' | 'polyline' | 'rect' | 'ellipse';
+export type Tool = 'select' | 'freehand' | 'line' | 'polyline' | 'rect' | 'ellipse';
 
 export interface PolylineDraft {
+  id: string;
+  points: Point[];
+  color: string;
+  lineWidth: number;
+}
+
+export interface FreehandDraft {
   id: string;
   points: Point[];
   color: string;
@@ -47,6 +54,8 @@ export interface EditorState {
   activeShape: Shape | null;
   /** 폴리라인 그리는 중 (클릭으로 점 추가, Enter·우클릭으로 완료) */
   polylineDraft: PolylineDraft | null;
+  /** 자유그리기 중 (첫 클릭 시작, 다음 클릭 완료) */
+  freehandDraft: FreehandDraft | null;
 }
 
 export interface ImageUndoSnapshot {

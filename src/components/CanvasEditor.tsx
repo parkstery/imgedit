@@ -47,26 +47,59 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     queueMicrotask(() => onShapeCommitted?.());
   }, [setState, onShapeCommitted]);
 
+  const commitFreehandDraft = useCallback(() => {
+    setState(prev => {
+      const d = prev.freehandDraft;
+      if (!d || d.points.length < 2) return { ...prev, freehandDraft: null };
+      const xs = d.points.map(p => p.x);
+      const ys = d.points.map(p => p.y);
+      const shape: Shape = {
+        id: d.id,
+        type: 'polyline',
+        x1: Math.min(...xs),
+        y1: Math.min(...ys),
+        x2: Math.max(...xs),
+        y2: Math.max(...ys),
+        points: d.points.map(p => ({ x: p.x, y: p.y })),
+        color: d.color,
+        lineWidth: d.lineWidth,
+      };
+      return { ...prev, shapes: [...prev.shapes, shape], freehandDraft: null };
+    });
+    queueMicrotask(() => onShapeCommitted?.());
+  }, [setState, onShapeCommitted]);
+
   useEffect(() => {
     if (state.tool !== 'polyline') setPolyHover(null);
   }, [state.tool]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (state.tool !== 'polyline' || !state.polylineDraft) return;
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        commitPolylineDraft();
+      if (state.tool === 'polyline' && state.polylineDraft) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitPolylineDraft();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setState(prev => ({ ...prev, polylineDraft: null }));
+          setPolyHover(null);
+        }
       }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setState(prev => ({ ...prev, polylineDraft: null }));
-        setPolyHover(null);
+      if (state.tool === 'freehand' && state.freehandDraft) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commitFreehandDraft();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setState(prev => ({ ...prev, freehandDraft: null }));
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.tool, state.polylineDraft, commitPolylineDraft, setState]);
+  }, [state.tool, state.polylineDraft, state.freehandDraft, commitPolylineDraft, commitFreehandDraft, setState]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -138,6 +171,18 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
       }
       if (polyHover) {
         ctx.lineTo(polyHover.x, polyHover.y);
+      }
+      ctx.stroke();
+    }
+
+    if (state.freehandDraft && state.freehandDraft.points.length > 1) {
+      const pts = state.freehandDraft.points;
+      ctx.strokeStyle = state.freehandDraft.color;
+      ctx.lineWidth = state.freehandDraft.lineWidth / state.zoom;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
       }
       ctx.stroke();
     }
@@ -218,6 +263,44 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     });
   };
 
+  const handleFreehandClick = (e: React.MouseEvent) => {
+    if (state.tool !== 'freehand' || !state.image) return;
+    const imgPos = toImageCoords(getMousePos(e));
+    setState(prev => {
+      if (prev.tool !== 'freehand') return prev;
+      if (!prev.freehandDraft) {
+        return {
+          ...prev,
+          freehandDraft: {
+            id: Math.random().toString(36).slice(2, 11),
+            points: [imgPos],
+            color: prev.color,
+            lineWidth: 2,
+          },
+        };
+      }
+      if (prev.freehandDraft.points.length < 2) {
+        return { ...prev, freehandDraft: null };
+      }
+      const draft = prev.freehandDraft;
+      const xs = draft.points.map(p => p.x);
+      const ys = draft.points.map(p => p.y);
+      const shape: Shape = {
+        id: draft.id,
+        type: 'polyline',
+        x1: Math.min(...xs),
+        y1: Math.min(...ys),
+        x2: Math.max(...xs),
+        y2: Math.max(...ys),
+        points: draft.points.map(p => ({ x: p.x, y: p.y })),
+        color: draft.color,
+        lineWidth: draft.lineWidth,
+      };
+      queueMicrotask(() => onShapeCommitted?.());
+      return { ...prev, shapes: [...prev.shapes, shape], freehandDraft: null };
+    });
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
     setDragStart(pos);
@@ -227,7 +310,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     } else if (e.button === 0) {
       if (state.tool === 'select') {
         setState(prev => ({ ...prev, isSelecting: true, selection: null }));
-      } else if (state.tool !== 'polyline') {
+      } else if (state.tool !== 'polyline' && state.tool !== 'freehand') {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
@@ -253,6 +336,25 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
       setPolyHover(toImageCoords(pos));
     } else {
       setPolyHover(null);
+    }
+
+    if (state.tool === 'freehand' && state.freehandDraft) {
+      const current = toImageCoords(pos);
+      setState(prev => {
+        if (!prev.freehandDraft || prev.tool !== 'freehand') return prev;
+        const points = prev.freehandDraft.points;
+        const last = points[points.length - 1];
+        const dx = current.x - last.x;
+        const dy = current.y - last.y;
+        if (dx * dx + dy * dy < 1) return prev;
+        return {
+          ...prev,
+          freehandDraft: {
+            ...prev.freehandDraft,
+            points: [...points, current],
+          },
+        };
+      });
     }
 
     if (state.isPanning && dragStart) {
@@ -353,6 +455,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
     if (state.tool === 'polyline' && state.polylineDraft && state.polylineDraft.points.length >= 2) {
       commitPolylineDraft();
     }
+    if (state.tool === 'freehand' && state.freehandDraft && state.freehandDraft.points.length >= 2) {
+      commitFreehandDraft();
+    }
   };
 
   return (
@@ -366,7 +471,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      onClick={handlePolylineClick}
+      onClick={(e) => {
+        handlePolylineClick(e);
+        handleFreehandClick(e);
+      }}
       onWheel={handleWheel}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

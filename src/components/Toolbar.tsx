@@ -11,6 +11,7 @@ import {
   Download,
   Scale,
   Maximize2,
+  Pencil,
   Square,
   Circle,
   Minus,
@@ -161,6 +162,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<SelectionBoxToolbarIcon size={18} />} 
           label="선택 박스" 
           active={state.tool === 'select'}
+        />
+        <ToolbarButton 
+          onClick={() => onToolChange('freehand')} 
+          icon={<Pencil size={18} />} 
+          label="자유그리기" 
+          active={state.tool === 'freehand'}
         />
         <ToolbarButton 
           onClick={() => onToolChange('line')} 

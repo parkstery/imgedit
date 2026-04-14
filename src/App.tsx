@@ -35,6 +35,7 @@ const INITIAL_STATE: EditorState = {
   shapes: [],
   activeShape: null,
   polylineDraft: null,
+  freehandDraft: null,
 };
 
 export default function App() {
@@ -207,7 +208,7 @@ export default function App() {
   const handleZoomChange = (value: number) => setState(prev => ({ ...prev, zoom: Math.max(0.01, Math.min(8, value)) }));
 
   const handleToolChange = (tool: EditorState['tool']) =>
-    setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null }));
+    setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null, freehandDraft: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
 
