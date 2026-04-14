@@ -108,6 +108,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onLineWidthChange: (lineWidth: number) => void;
+  onFillToleranceChange: (tolerance: number) => void;
   onDeleteLastShape: () => void;
   onRedoLastShape: () => void;
   canUndoLast: boolean;
@@ -132,6 +133,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToolChange,
   onColorChange,
   onLineWidthChange,
+  onFillToleranceChange,
   onDeleteLastShape,
   onRedoLastShape,
   canUndoLast,
@@ -195,6 +197,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="페인트통"
           active={state.tool === 'fill'}
         />
+        {state.tool === 'fill' && (
+          <div className="flex items-center gap-1.5 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0">
+            <span className="text-[10px] text-neutral-400 whitespace-nowrap">톨러런스</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={state.fillTolerance}
+              onChange={(e) => onFillToleranceChange(parseInt(e.target.value, 10))}
+              className="w-20 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              title="페인트통 색 일치 허용 오차 (높을수록 넓게 채움)"
+            />
+            <span className="text-[10px] text-neutral-400 w-6 tabular-nums text-right">{state.fillTolerance}</span>
+          </div>
+        )}
         
         <div className="flex items-center gap-1 ml-1 px-1 border-l border-neutral-700">
           <input 

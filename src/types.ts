@@ -50,6 +50,8 @@ export interface EditorState {
   tool: Tool;
   color: string;
   lineWidth: number;
+  /** 페인트통 채우기 색 일치 허용 오차 (0~100, 채널별) */
+  fillTolerance: number;
   baseLayerVisible: boolean;
   shapeLayerVisible: boolean;
   activeLayer: 'base' | 'shape';

@@ -85,6 +85,7 @@ const INITIAL_STATE: EditorState = {
   tool: 'select',
   color: '#ff0000',
   lineWidth: 2,
+  fillTolerance: 40,
   baseLayerVisible: true,
   shapeLayerVisible: true,
   activeLayer: 'shape',
@@ -317,6 +318,8 @@ export default function App() {
     setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null, freehandDraft: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
+  const handleFillToleranceChange = (fillTolerance: number) =>
+    setState(prev => ({ ...prev, fillTolerance: Math.max(0, Math.min(100, Math.round(fillTolerance))) }));
   const handleSetLayerVisible = (layer: 'base' | 'shape', visible: boolean) =>
     setState(prev =>
       layer === 'base'
@@ -779,6 +782,7 @@ export default function App() {
         onToolChange={handleToolChange}
         onColorChange={handleColorChange}
         onLineWidthChange={handleLineWidthChange}
+        onFillToleranceChange={handleFillToleranceChange}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}
         canUndoLast={undoStack.length > 0 || state.shapes.length > 0}
