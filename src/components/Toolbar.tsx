@@ -20,6 +20,7 @@ import {
   Redo2,
   PaintBucket,
   Palette,
+  Type,
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -108,6 +109,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onLineWidthChange: (lineWidth: number) => void;
+  onTextFontSizeChange: (px: number) => void;
   onFillToleranceChange: (tolerance: number) => void;
   onFillIgnoreAlphaChange: (ignoreAlpha: boolean) => void;
   onDeleteLastShape: () => void;
@@ -134,6 +136,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToolChange,
   onColorChange,
   onLineWidthChange,
+  onTextFontSizeChange,
   onFillToleranceChange,
   onFillIgnoreAlphaChange,
   onDeleteLastShape,
@@ -199,6 +202,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="페인트통"
           active={state.tool === 'fill'}
         />
+        <ToolbarButton
+          onClick={() => onToolChange('text')}
+          icon={<Type size={18} />}
+          label="텍스트"
+          active={state.tool === 'text'}
+          disabled={!state.image}
+        />
+        {state.tool === 'text' && (
+          <div className="flex items-center gap-1 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0">
+            <span className="text-[10px] text-neutral-400 whitespace-nowrap">글자 크기</span>
+            <input
+              type="number"
+              min={8}
+              max={256}
+              step={1}
+              value={state.textFontSize}
+              onChange={(e) =>
+                onTextFontSizeChange(Math.max(8, Math.min(256, parseInt(e.target.value || '24', 10))))
+              }
+              className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              title="텍스트 크기(px)"
+            />
+          </div>
+        )}
         {state.tool === 'fill' && (
           <div
             className="flex items-center gap-2 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"

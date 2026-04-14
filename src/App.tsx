@@ -5,7 +5,8 @@ import { StatusBar } from './components/StatusBar';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
-import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry } from './types';
+import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry, Shape } from './types';
+import { renderShapesOnContext, measureTextShapeBounds } from './lib/drawShapes';
 import {
   readFillTolerance,
   readFillIgnoreAlpha,
@@ -91,6 +92,7 @@ const INITIAL_STATE: EditorState = {
   tool: 'select',
   color: '#ff0000',
   lineWidth: 2,
+  textFontSize: 24,
   fillTolerance: 40,
   fillIgnoreAlpha: false,
   baseLayerVisible: true,
@@ -100,6 +102,7 @@ const INITIAL_STATE: EditorState = {
   activeShape: null,
   polylineDraft: null,
   freehandDraft: null,
+  textDraft: null,
 };
 
 function loadFillToolPrefsFromStorage(): Pick<EditorState, 'fillTolerance' | 'fillIgnoreAlpha'> {
@@ -250,6 +253,7 @@ export default function App() {
           ...INITIAL_STATE,
           fillTolerance: prev.fillTolerance,
           fillIgnoreAlpha: prev.fillIgnoreAlpha,
+          textFontSize: prev.textFontSize,
           image: img,
           fileName: file.name,
           // Center image initially
@@ -292,30 +296,7 @@ export default function App() {
     }
 
     if (state.shapeLayerVisible) {
-      // Draw shapes on export
-      state.shapes.forEach(shape => {
-        ctx.strokeStyle = shape.color;
-        ctx.lineWidth = shape.lineWidth;
-        ctx.beginPath();
-        if (shape.type === 'line') {
-          ctx.moveTo(shape.x1, shape.y1);
-          ctx.lineTo(shape.x2, shape.y2);
-        } else if (shape.type === 'rect') {
-          ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
-        } else if (shape.type === 'ellipse') {
-          const rx = Math.abs(shape.x2 - shape.x1) / 2;
-          const ry = Math.abs(shape.y2 - shape.y1) / 2;
-          const cx = (shape.x1 + shape.x2) / 2;
-          const cy = (shape.y1 + shape.y2) / 2;
-          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
-          ctx.moveTo(shape.points[0].x, shape.points[0].y);
-          for (let i = 1; i < shape.points.length; i++) {
-            ctx.lineTo(shape.points[i].x, shape.points[i].y);
-          }
-        }
-        ctx.stroke();
-      });
+      renderShapesOnContext(ctx, state.shapes);
     }
     
     const extension = format.split('/')[1];
@@ -334,9 +315,24 @@ export default function App() {
   const handleZoomChange = (value: number) => setState(prev => ({ ...prev, zoom: Math.max(0.01, Math.min(8, value)) }));
 
   const handleToolChange = (tool: EditorState['tool']) =>
-    setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null, freehandDraft: null }));
+    setState(prev => ({
+      ...prev,
+      tool,
+      selection: null,
+      polylineDraft: null,
+      freehandDraft: null,
+      textDraft: null,
+    }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
+  const handleTextFontSizeChange = (textFontSize: number) => {
+    const next = Math.max(8, Math.min(256, Math.round(textFontSize)));
+    setState(prev => ({
+      ...prev,
+      textFontSize: next,
+      textDraft: prev.textDraft ? { ...prev.textDraft, fontSize: next } : null,
+    }));
+  };
   const handleFillToleranceChange = (fillTolerance: number) => {
     const next = Math.max(0, Math.min(100, Math.round(fillTolerance)));
     writeFillTolerance(next);
@@ -450,7 +446,18 @@ export default function App() {
     const scaleX = newWidth / currentWidth;
     const scaleY = newHeight / currentHeight;
     
-    const scaledShapes = state.shapes.map(shape => {
+    const scaledShapes = state.shapes.map((shape: Shape) => {
+      if (shape.type === 'text' && shape.text != null && shape.fontSize != null) {
+        return {
+          ...shape,
+          x1: shape.x1 * scaleX,
+          y1: shape.y1 * scaleY,
+          x2: shape.x1 * scaleX,
+          y2: shape.y1 * scaleY,
+          fontSize: shape.fontSize * Math.sqrt(scaleX * scaleY),
+          lineWidth: 0,
+        };
+      }
       const base = {
         ...shape,
         x1: shape.x1 * scaleX,
@@ -496,34 +503,18 @@ export default function App() {
       0, 0, rect.width, rect.height
     );
 
-    // Draw shapes that intersect with the selection
+    // Draw shapes that intersect with the selection (텍스트는 바운딩으로 판별)
     state.shapes.forEach(shape => {
       if (shape.type === 'polyline') {
         if (!rectsOverlap(rect, shapeToBoundsRect(shape))) return;
       }
+      if (shape.type === 'text') {
+        const tb = measureTextShapeBounds(shape);
+        if (!tb || !rectsOverlap(rect, tb)) return;
+      }
       ctx.save();
       ctx.translate(-rect.x, -rect.y);
-      ctx.strokeStyle = shape.color;
-      ctx.lineWidth = shape.lineWidth;
-      ctx.beginPath();
-      if (shape.type === 'line') {
-        ctx.moveTo(shape.x1, shape.y1);
-        ctx.lineTo(shape.x2, shape.y2);
-      } else if (shape.type === 'rect') {
-        ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
-      } else if (shape.type === 'ellipse') {
-        const rx = Math.abs(shape.x2 - shape.x1) / 2;
-        const ry = Math.abs(shape.y2 - shape.y1) / 2;
-        const cx = (shape.x1 + shape.x2) / 2;
-        const cy = (shape.y1 + shape.y2) / 2;
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-      } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
-        ctx.moveTo(shape.points[0].x, shape.points[0].y);
-        for (let i = 1; i < shape.points.length; i++) {
-          ctx.lineTo(shape.points[i].x, shape.points[i].y);
-        }
-      }
-      ctx.stroke();
+      renderShapesOnContext(ctx, [shape]);
       ctx.restore();
     });
 
@@ -808,6 +799,7 @@ export default function App() {
         onToolChange={handleToolChange}
         onColorChange={handleColorChange}
         onLineWidthChange={handleLineWidthChange}
+        onTextFontSizeChange={handleTextFontSizeChange}
         onFillToleranceChange={handleFillToleranceChange}
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
         onDeleteLastShape={handleDeleteLastShape}

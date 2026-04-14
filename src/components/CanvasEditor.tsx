@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { EditorState, Point, Rect, Shape } from '../types';
 import { cn } from '../lib/utils';
 import { floodFillImageData, hexToRgba } from '../lib/floodFill';
+import { fillTextShapeOnContext, CANVAS_TEXT_FONT_STACK } from '../lib/drawShapes';
 
 interface CanvasEditorProps {
   state: EditorState;
@@ -33,6 +34,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         return '폴리라인';
       case 'freehand':
         return '자유그리기';
+      case 'text':
+        return '텍스트';
       default:
         return '도형 추가';
     }
@@ -96,12 +99,42 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     queueMicrotask(() => onShapeCommitted?.('자유그리기'));
   }, [setState, onShapeCommitted]);
 
+  const commitTextDraft = useCallback(() => {
+    setState(prev => {
+      const d = prev.textDraft;
+      if (!d || !d.text.trim()) return { ...prev, textDraft: null };
+      const shape: Shape = {
+        id: d.id,
+        type: 'text',
+        x1: d.x,
+        y1: d.y,
+        x2: d.x,
+        y2: d.y,
+        color: d.color,
+        lineWidth: 0,
+        text: d.text.trim(),
+        fontSize: d.fontSize,
+      };
+      return { ...prev, shapes: [...prev.shapes, shape], textDraft: null };
+    });
+    queueMicrotask(() => onShapeCommitted?.('텍스트'));
+  }, [setState, onShapeCommitted]);
+
+  const cancelTextDraft = useCallback(() => {
+    setState(prev => ({ ...prev, textDraft: null }));
+  }, [setState]);
+
   useEffect(() => {
     if (state.tool !== 'polyline') setPolyHover(null);
   }, [state.tool]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && state.textDraft) {
+        e.preventDefault();
+        setState(prev => ({ ...prev, textDraft: null }));
+        return;
+      }
       if (state.tool === 'polyline' && state.polylineDraft) {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -126,7 +159,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.tool, state.polylineDraft, state.freehandDraft, commitPolylineDraft, commitFreehandDraft, setState]);
+  }, [state.tool, state.polylineDraft, state.freehandDraft, state.textDraft, commitPolylineDraft, commitFreehandDraft, setState]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -167,9 +200,30 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           for (let i = 1; i < shape.points.length; i++) {
             ctx.lineTo(shape.points[i].x, shape.points[i].y);
           }
+        } else if (shape.type === 'text') {
+          fillTextShapeOnContext(ctx, shape);
         }
-        ctx.stroke();
+        if (shape.type !== 'text') {
+          ctx.stroke();
+        }
       });
+
+      if (state.tool === 'text' && state.textDraft && state.shapeLayerVisible) {
+        const d = state.textDraft;
+        ctx.save();
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
+        if (d.text.length > 0) {
+          ctx.fillStyle = d.color;
+          ctx.globalAlpha = 0.88;
+          ctx.fillText(d.text, d.x, d.y);
+        } else {
+          ctx.fillStyle = '#a3a3a3';
+          ctx.globalAlpha = 0.45;
+          ctx.fillText('텍스트', d.x, d.y);
+        }
+        ctx.restore();
+      }
 
       if (state.activeShape) {
         ctx.strokeStyle = state.activeShape.color;
@@ -384,6 +438,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         selection: null,
         polylineDraft: null,
         freehandDraft: null,
+        textDraft: null,
       }));
     };
     nextImg.onerror = () => {
@@ -402,9 +457,28 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       if (state.tool === 'select') {
         setState(prev => ({ ...prev, isSelecting: true, selection: null }));
       } else if (
+        state.tool === 'text' &&
+        state.image &&
+        state.activeLayer === 'shape' &&
+        state.shapeLayerVisible
+      ) {
+        const imgPos = toImageCoords(pos);
+        setState(prev => ({
+          ...prev,
+          textDraft: {
+            id: prev.textDraft?.id ?? Math.random().toString(36).slice(2, 11),
+            x: imgPos.x,
+            y: imgPos.y,
+            text: prev.textDraft?.text ?? '',
+            color: prev.color,
+            fontSize: prev.textFontSize,
+          },
+        }));
+      } else if (
         state.tool !== 'polyline' &&
         state.tool !== 'freehand' &&
         state.tool !== 'fill' &&
+        state.tool !== 'text' &&
         state.activeLayer === 'shape' &&
         state.shapeLayerVisible
       ) {
@@ -562,7 +636,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ref={containerRef}
       className={cn(
         'flex-1 bg-neutral-900 overflow-hidden relative transition-colors touch-none',
-        state.tool === 'fill' ? 'cursor-paint-bucket' : 'cursor-crosshair',
+        state.tool === 'fill'
+          ? 'cursor-paint-bucket'
+          : state.tool === 'text'
+            ? 'cursor-text'
+            : 'cursor-crosshair',
         isDraggingOver && 'bg-blue-500/10'
       )}
       onMouseDown={handleMouseDown}
@@ -601,6 +679,60 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       }}
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
+      {state.tool === 'text' && state.textDraft && (
+        <div
+          className="absolute left-2 right-2 bottom-2 z-40 flex flex-col gap-2 rounded-lg border border-neutral-600 bg-neutral-900/95 p-2 shadow-lg backdrop-blur-sm"
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <p className="text-[10px] text-neutral-500">
+            캔버스를 다시 클릭하면 위치만 바뀝니다. 한글·영문 입력 후 Ctrl+Enter 또는 확인으로 넣습니다.
+          </p>
+          <textarea
+            autoFocus
+            rows={3}
+            value={state.textDraft.text}
+            onChange={e =>
+              setState(prev =>
+                prev.textDraft
+                  ? { ...prev, textDraft: { ...prev.textDraft, text: e.target.value } }
+                  : prev
+              )
+            }
+            onKeyDown={e => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelTextDraft();
+                return;
+              }
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                commitTextDraft();
+              }
+            }}
+            className="w-full resize-y rounded border border-neutral-600 bg-neutral-950 px-2 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-blue-500 focus:outline-none"
+            placeholder="여기에 입력…"
+            spellCheck={false}
+            lang="ko"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={cancelTextDraft}
+              className="rounded border border-neutral-600 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              onClick={commitTextDraft}
+              disabled={!state.textDraft.text.trim()}
+              className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
       {isDraggingOver && (
         <div className="absolute inset-0 border-2 border-dashed border-blue-500/50 flex items-center justify-center pointer-events-none bg-blue-500/5">
           <p className="text-blue-400 font-medium">이미지를 놓아서 불러오기</p>

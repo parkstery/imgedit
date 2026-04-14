@@ -10,7 +10,7 @@ export interface Rect {
   height: number;
 }
 
-export type Tool = 'select' | 'freehand' | 'line' | 'polyline' | 'rect' | 'ellipse' | 'fill';
+export type Tool = 'select' | 'freehand' | 'line' | 'polyline' | 'rect' | 'ellipse' | 'fill' | 'text';
 
 export interface PolylineDraft {
   id: string;
@@ -26,9 +26,19 @@ export interface FreehandDraft {
   lineWidth: number;
 }
 
+/** 텍스트 도구: 클릭한 이미지 좌표에 배치, 입력 후 확정 */
+export interface TextDraft {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  fontSize: number;
+}
+
 export interface Shape {
   id: string;
-  type: 'line' | 'rect' | 'ellipse' | 'polyline';
+  type: 'line' | 'rect' | 'ellipse' | 'polyline' | 'text';
   x1: number;
   y1: number;
   x2: number;
@@ -37,6 +47,9 @@ export interface Shape {
   lineWidth: number;
   /** type이 polyline일 때 꼭짓점 (이미지 좌표) */
   points?: Point[];
+  /** type이 text일 때 (x1,y1) 왼쪽 베이스라인, fillText 기준 */
+  text?: string;
+  fontSize?: number;
 }
 
 export interface EditorState {
@@ -50,6 +63,8 @@ export interface EditorState {
   tool: Tool;
   color: string;
   lineWidth: number;
+  /** 텍스트 도구 글자 크기(px) */
+  textFontSize: number;
   /** 페인트통 채우기 색 일치 허용 오차 (0~100, 채널별) */
   fillTolerance: number;
   /** true면 채우기 영역 판별 시 RGB만 비교하고 알파는 무시 */
@@ -63,6 +78,8 @@ export interface EditorState {
   polylineDraft: PolylineDraft | null;
   /** 자유그리기 중 (첫 클릭 시작, 다음 클릭 완료) */
   freehandDraft: FreehandDraft | null;
+  /** 텍스트 입력 중 (캔버스 클릭으로 위치 지정 후 패널에서 입력) */
+  textDraft: TextDraft | null;
 }
 
 export interface ImageUndoSnapshot {
