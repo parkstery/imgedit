@@ -143,7 +143,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton 
           onClick={() => onToolChange('polyline')} 
           icon={<PolylineToolbarIcon size={18} />} 
-          label="폴리라인 (클릭: 점 추가 · Enter·우클릭: 완료)" 
+          label="폴리라인" 
           active={state.tool === 'polyline'}
         />
         <ToolbarButton 
