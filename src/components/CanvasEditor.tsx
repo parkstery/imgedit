@@ -533,7 +533,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ref={containerRef}
       className={cn(
         'flex-1 bg-neutral-900 overflow-hidden relative transition-colors touch-none',
-        state.tool === 'fill' ? 'cursor-cell' : 'cursor-crosshair',
+        state.tool === 'fill' ? 'cursor-paint-bucket' : 'cursor-crosshair',
         isDraggingOver && 'bg-blue-500/10'
       )}
       onMouseDown={handleMouseDown}
