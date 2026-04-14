@@ -8,7 +8,6 @@ import {
   Copy, 
   Scissors, 
   ClipboardPaste,
-  MousePointer2,
   Download,
   Scale,
   Maximize2,
@@ -21,6 +20,34 @@ import {
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
+
+/** 캔버스 선택 상자와 같은 점선 박스 */
+function SelectionBoxToolbarIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="shrink-0"
+      aria-hidden
+    >
+      <rect
+        x="3.5"
+        y="3.5"
+        width="17"
+        height="17"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeDasharray="3.5 3.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 interface ToolbarProps {
   state: EditorState;
@@ -77,8 +104,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="flex items-center gap-0.5 px-2 border-r border-neutral-700">
         <ToolbarButton 
           onClick={() => onToolChange('select')} 
-          icon={<MousePointer2 size={18} />} 
-          label="선택 도구" 
+          icon={<SelectionBoxToolbarIcon size={18} />} 
+          label="선택 박스" 
           active={state.tool === 'select'}
         />
         <ToolbarButton 
