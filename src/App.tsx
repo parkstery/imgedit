@@ -31,6 +31,7 @@ const INITIAL_STATE: EditorState = {
   fileName: null,
   tool: 'select',
   color: '#ff0000',
+  lineWidth: 2,
   shapes: [],
   activeShape: null,
   polylineDraft: null,
@@ -208,6 +209,7 @@ export default function App() {
   const handleToolChange = (tool: EditorState['tool']) =>
     setState(prev => ({ ...prev, tool, selection: null, polylineDraft: null }));
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
+  const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
 
   const handleDeleteLastShape = useCallback(() => {
     const prevStack = undoStackRef.current;
@@ -615,6 +617,7 @@ export default function App() {
         onZoomChange={handleZoomChange}
         onToolChange={handleToolChange}
         onColorChange={handleColorChange}
+        onLineWidthChange={handleLineWidthChange}
         onDeleteLastShape={handleDeleteLastShape}
         canUndoLast={undoStack.length > 0 || state.shapes.length > 0}
         onClearShapes={handleClearShapes}

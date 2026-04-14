@@ -42,6 +42,7 @@ export interface EditorState {
   fileName: string | null;
   tool: Tool;
   color: string;
+  lineWidth: number;
   shapes: Shape[];
   activeShape: Shape | null;
   /** 폴리라인 그리는 중 (클릭으로 점 추가, Enter·우클릭으로 완료) */

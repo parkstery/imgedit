@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   FolderOpen, 
   Save, 
@@ -11,12 +11,12 @@ import {
   Download,
   Scale,
   Maximize2,
-  Type,
   Square,
   Circle,
   Minus,
   Trash2,
-  Undo2
+  Undo2,
+  ChevronDown
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -88,6 +88,7 @@ interface ToolbarProps {
   onZoomChange: (value: number) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
+  onLineWidthChange: (lineWidth: number) => void;
   onDeleteLastShape: () => void;
   canUndoLast: boolean;
   onClearShapes: () => void;
@@ -109,6 +110,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onZoomChange,
   onToolChange,
   onColorChange,
+  onLineWidthChange,
   onDeleteLastShape,
   canUndoLast,
   onClearShapes,
@@ -116,6 +118,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCut,
   onPaste
 }) => {
+  const [isLineWidthOpen, setIsLineWidthOpen] = useState(false);
+  const lineWidthMenuRef = useRef<HTMLDivElement>(null);
+  const lineWidthOptions = useMemo(
+    () => [
+      { level: 1, width: 1 },
+      { level: 2, width: 2 },
+      { level: 3, width: 4 },
+      { level: 4, width: 6 },
+      { level: 5, width: 8 },
+      { level: 6, width: 12 },
+    ],
+    []
+  );
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!lineWidthMenuRef.current?.contains(event.target as Node)) {
+        setIsLineWidthOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
   return (
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto no-scrollbar">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
@@ -167,6 +193,37 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             className="w-6 h-6 rounded cursor-pointer bg-transparent border-none"
             title="색상 선택"
           />
+          <div className="relative" ref={lineWidthMenuRef}>
+            <button
+              onClick={() => setIsLineWidthOpen(prev => !prev)}
+              title="선두께"
+              className="h-7 px-2 rounded-md transition-colors flex items-center gap-1 text-xs text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600"
+            >
+              <span>선두께</span>
+              <span className="text-neutral-300">{state.lineWidth}px</span>
+              <ChevronDown size={14} className={cn("transition-transform", isLineWidthOpen && "rotate-180")} />
+            </button>
+            {isLineWidthOpen && (
+              <div className="absolute left-0 top-full mt-1 w-36 rounded-md border border-neutral-700 bg-neutral-900 shadow-xl z-20 py-1">
+                {lineWidthOptions.map(({ level, width }) => (
+                  <button
+                    key={width}
+                    onClick={() => {
+                      onLineWidthChange(width);
+                      setIsLineWidthOpen(false);
+                    }}
+                    className={cn(
+                      "w-full px-2.5 py-1.5 text-left text-xs flex items-center justify-between hover:bg-neutral-800",
+                      state.lineWidth === width ? "text-blue-400" : "text-neutral-200"
+                    )}
+                  >
+                    <span>{level}단계</span>
+                    <span>{width}px</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <ToolbarButton 
             onClick={onDeleteLastShape} 
             icon={<Undo2 size={18} />} 

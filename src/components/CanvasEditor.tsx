@@ -204,7 +204,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
             id: Math.random().toString(36).slice(2, 11),
             points: [imgPos],
             color: prev.color,
-            lineWidth: 2,
+            lineWidth: prev.lineWidth,
           },
         };
       }
@@ -239,7 +239,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({ state, setState, onI
             x2: imgPos.x,
             y2: imgPos.y,
             color: state.color,
-            lineWidth: 2,
+            lineWidth: state.lineWidth,
           },
         }));
       }
