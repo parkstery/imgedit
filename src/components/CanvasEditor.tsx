@@ -43,7 +43,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const textInputRef = useRef<HTMLInputElement>(null);
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   /** 폴리라인: 마지막 점에서 커서까지 미리보기 */
@@ -100,46 +99,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     queueMicrotask(() => onShapeCommitted?.('자유그리기'));
   }, [setState, onShapeCommitted]);
 
-  const commitTextDraft = useCallback(() => {
-    setState(prev => {
-      const d = prev.textDraft;
-      if (!d || !d.text.trim()) return { ...prev, textDraft: null };
-      const shape: Shape = {
-        id: d.id,
-        type: 'text',
-        x1: d.x,
-        y1: d.y,
-        x2: d.x,
-        y2: d.y,
-        color: d.color,
-        lineWidth: 0,
-        text: d.text.trim(),
-        fontSize: d.fontSize,
-      };
-      return {
-        ...prev,
-        shapes: [...prev.shapes, shape],
-        textDraft: null,
-        /** 텍스트는 도형 레이어에만 그려지므로 꺼져 있으면 보이지 않음 → 확정 시 켬 */
-        shapeLayerVisible: true,
-      };
-    });
-    queueMicrotask(() => onShapeCommitted?.('텍스트'));
-  }, [setState, onShapeCommitted]);
-
-  const cancelTextDraft = useCallback(() => {
-    setState(prev => ({ ...prev, textDraft: null }));
-  }, [setState]);
-
   useEffect(() => {
     if (state.tool !== 'polyline') setPolyHover(null);
   }, [state.tool]);
-
-  useEffect(() => {
-    if (state.tool === 'text' && state.textDraft) {
-      textInputRef.current?.focus();
-    }
-  }, [state.tool, state.textDraft?.id, state.textDraft?.x, state.textDraft?.y]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -265,6 +227,29 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.lineTo(pts[i].x, pts[i].y);
         }
         ctx.stroke();
+      }
+
+      if (state.tool === 'text' && state.textDraft) {
+        const d = state.textDraft;
+        ctx.save();
+        if (d.text.trim()) {
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = d.color;
+          ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText(d.text, d.x, d.y);
+        } else {
+          ctx.strokeStyle = d.color;
+          ctx.lineWidth = Math.max(1, 1 / state.zoom);
+          const m = 6 / state.zoom;
+          ctx.beginPath();
+          ctx.moveTo(d.x - m, d.y);
+          ctx.lineTo(d.x + m, d.y);
+          ctx.moveTo(d.x, d.y - m);
+          ctx.lineTo(d.x, d.y + m);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     }
 
@@ -675,58 +660,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       }}
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
-      {state.tool === 'text' && state.textDraft && (
-        <div
-          className="pointer-events-auto absolute z-50 min-w-0"
-          style={{
-            left: state.position.x + state.textDraft.x * state.zoom,
-            top:
-              state.position.y +
-              state.textDraft.y * state.zoom -
-              state.textDraft.fontSize * state.zoom * 0.78,
-          }}
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <input
-            ref={textInputRef}
-            type="text"
-            autoComplete="off"
-            value={state.textDraft.text}
-            onChange={e =>
-              setState(prev =>
-                prev.textDraft
-                  ? { ...prev, textDraft: { ...prev.textDraft, text: e.target.value } }
-                  : prev
-              )
-            }
-            onKeyDown={e => {
-              if (e.nativeEvent.isComposing) return;
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                cancelTextDraft();
-                return;
-              }
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitTextDraft();
-              }
-            }}
-            spellCheck={false}
-            lang="ko"
-            placeholder="입력…"
-            title="Enter: 확정 · Esc: 취소 · 캔버스 다시 클릭: 입력 위치만 이동"
-            className="m-0 rounded border border-blue-500/70 bg-neutral-950/80 px-1 py-0 shadow-md outline-none ring-1 ring-blue-500/30 focus:border-blue-400"
-            style={{
-              fontSize: state.textDraft.fontSize * state.zoom,
-              lineHeight: 1.15,
-              color: state.textDraft.color,
-              fontFamily: CANVAS_TEXT_FONT_STACK,
-              width: `${Math.max(4, state.textDraft.text.length + 2)}ch`,
-              minWidth: '3ch',
-            }}
-          />
-        </div>
-      )}
       {isDraggingOver && (
         <div className="absolute inset-0 border-2 border-dashed border-blue-500/50 flex items-center justify-center pointer-events-none bg-blue-500/5">
           <p className="text-blue-400 font-medium">이미지를 놓아서 불러오기</p>

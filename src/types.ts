@@ -78,7 +78,7 @@ export interface EditorState {
   polylineDraft: PolylineDraft | null;
   /** 자유그리기 중 (첫 클릭 시작, 다음 클릭 완료) */
   freehandDraft: FreehandDraft | null;
-  /** 텍스트 입력 중 (캔버스 클릭으로 위치 지정 후 패널에서 입력) */
+  /** 텍스트 입력 중 (캔버스로 배치 위치 지정 후 하단 고정 패널에서 입력) */
   textDraft: TextDraft | null;
 }
 

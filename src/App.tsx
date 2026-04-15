@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react
 import { Toolbar } from './components/Toolbar';
 import { CanvasEditor } from './components/CanvasEditor';
 import { StatusBar } from './components/StatusBar';
+import { TextDraftPanel } from './components/TextDraftPanel';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
@@ -921,6 +922,12 @@ export default function App() {
         onApply={handleCanvasSize}
         currentWidth={state.image?.width || 0}
         currentHeight={state.image?.height || 0}
+      />
+
+      <TextDraftPanel
+        state={state}
+        setState={setState}
+        onTextCommitted={() => appendUndoEntry({ type: 'shape', label: '텍스트' })}
       />
 
       <StatusBar state={state} />
