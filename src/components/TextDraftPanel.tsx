@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useLayoutEffect, useRef } from 'react';
 import { EditorState, Shape } from '../types';
 import { CANVAS_TEXT_FONT_STACK } from '../lib/drawShapes';
 
@@ -46,17 +46,31 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
     setState(prev => ({ ...prev, textDraft: null }));
   }, [setState]);
 
-  useEffect(() => {
-    if (state.tool === 'text' && d) {
-      inputRef.current?.focus();
-    }
+  useLayoutEffect(() => {
+    if (state.tool !== 'text' || !d) return;
+    const el = inputRef.current;
+    if (!el) return;
+    const opts: FocusOptions = { preventScroll: true };
+    const run = () => el.focus(opts);
+    run();
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      run();
+      raf2 = requestAnimationFrame(run);
+    });
+    const t = window.setTimeout(run, 0);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      window.clearTimeout(t);
+    };
   }, [state.tool, d?.id, d?.x, d?.y]);
 
   if (state.tool !== 'text' || !d) return null;
 
   return (
-    <div className="shrink-0 border-t border-neutral-800 bg-neutral-900/95 px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-      <div className="flex flex-col gap-0.5 min-w-0 sm:w-44 shrink-0">
+    <div className="shrink-0 border-t border-neutral-800 bg-neutral-900/95 px-3 py-2.5 flex flex-col gap-2 sm:flex-row sm:gap-3 sm:items-center">
+      <div className="flex flex-col gap-0.5 shrink-0 sm:w-44 min-w-0">
         <span className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">
           텍스트 입력
         </span>
@@ -64,37 +78,42 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
           배치 위치: {Math.round(d.x)}, {Math.round(d.y)} (이미지 좌표)
         </span>
       </div>
-      <input
-        ref={inputRef}
-        type="text"
-        autoComplete="off"
-        value={d.text}
-        onChange={e =>
-          setState(prev =>
-            prev.textDraft
-              ? { ...prev, textDraft: { ...prev.textDraft, text: e.target.value } }
-              : prev
-          )
-        }
-        onKeyDown={e => {
-          if (e.nativeEvent.isComposing) return;
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            cancel();
-            return;
+      <div className="flex-1 min-w-0 w-full min-h-[2.75rem] flex items-center">
+        <input
+          ref={inputRef}
+          id="text-draft-input"
+          type="text"
+          autoComplete="off"
+          autoFocus
+          dir="ltr"
+          value={d.text}
+          onChange={e =>
+            setState(prev =>
+              prev.textDraft
+                ? { ...prev, textDraft: { ...prev.textDraft, text: e.target.value } }
+                : prev
+            )
           }
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit();
-          }
-        }}
-        spellCheck={false}
-        lang="ko"
-        placeholder="여기에 입력 후 확인 또는 Enter"
-        className="flex-1 min-w-0 rounded border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-sm outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/25"
-        style={{ fontFamily: CANVAS_TEXT_FONT_STACK, color: d.color }}
-      />
-      <div className="flex items-center gap-2 shrink-0">
+          onKeyDown={e => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              cancel();
+              return;
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commit();
+            }
+          }}
+          spellCheck={false}
+          lang="ko"
+          placeholder="여기에 입력 후 확인 또는 Enter"
+          className="box-border w-full min-w-0 rounded border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-sm text-left outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/25 sm:min-w-[14rem]"
+          style={{ fontFamily: CANVAS_TEXT_FONT_STACK, color: d.color }}
+        />
+      </div>
+      <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-center">
         <button
           type="button"
           onClick={commit}

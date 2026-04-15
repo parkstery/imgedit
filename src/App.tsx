@@ -329,13 +329,24 @@ export default function App() {
       ) {
         activeLayer = 'shape';
       }
+      const textDraft =
+        tool === 'text' && prev.image
+          ? {
+              id: Math.random().toString(36).slice(2, 11),
+              x: prev.image.width / 2,
+              y: prev.image.height / 2,
+              text: '',
+              color: prev.color,
+              fontSize: prev.textFontSize,
+            }
+          : null;
       return {
         ...prev,
         tool,
         selection: null,
         polylineDraft: null,
         freehandDraft: null,
-        textDraft: null,
+        textDraft,
         activeLayer,
       };
     });
