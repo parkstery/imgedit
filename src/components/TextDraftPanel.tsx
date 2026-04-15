@@ -36,7 +36,6 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
         ...prev,
         shapes: [...prev.shapes, shape],
         textDraft: null,
-        shapeLayerVisible: true,
       };
     });
     queueMicrotask(onTextCommitted);

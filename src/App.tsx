@@ -14,8 +14,6 @@ import {
   writeFillTolerance,
   writeFillIgnoreAlpha,
 } from './lib/fillToolStorage';
-import { motion, AnimatePresence } from 'motion/react';
-
 function shapeToBoundsRect(shape: { x1: number; y1: number; x2: number; y2: number }): Rect {
   return {
     x: Math.min(shape.x1, shape.x2),
@@ -43,45 +41,6 @@ function imageToDataUrlSafe(image: HTMLImageElement): string | undefined {
   }
 }
 
-function LayerRow({
-  name,
-  visible,
-  active,
-  onToggleVisible,
-  onSelect,
-}: {
-  name: string;
-  visible: boolean;
-  active: boolean;
-  onToggleVisible: (visible: boolean) => void;
-  onSelect: () => void;
-}) {
-  return (
-    <div
-      className={`flex items-center gap-2 rounded border px-2 py-1.5 text-xs ${
-        active ? 'border-blue-500/60 bg-blue-500/10 text-blue-300' : 'border-neutral-800 bg-neutral-950/70 text-neutral-300'
-      }`}
-    >
-      <button
-        type="button"
-        onClick={() => onToggleVisible(!visible)}
-        className="w-6 h-5 rounded border border-neutral-700 text-[10px] hover:bg-neutral-800"
-        title={visible ? '레이어 숨기기' : '레이어 표시'}
-      >
-        {visible ? 'ON' : 'OFF'}
-      </button>
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex-1 text-left truncate"
-        title="활성 레이어로 선택"
-      >
-        {name}
-      </button>
-    </div>
-  );
-}
-
 const INITIAL_STATE: EditorState = {
   zoom: 1,
   position: { x: 0, y: 0 },
@@ -96,9 +55,6 @@ const INITIAL_STATE: EditorState = {
   textFontSize: 24,
   fillTolerance: 40,
   fillIgnoreAlpha: false,
-  baseLayerVisible: true,
-  shapeLayerVisible: true,
-  activeLayer: 'shape',
   shapes: [],
   activeShape: null,
   polylineDraft: null,
@@ -128,13 +84,6 @@ export default function App() {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
   const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
-
-  const getUndoEntryLabel = useCallback((entry: UndoEntry): string => {
-    if (entry.label) return entry.label;
-    if (entry.type === 'shape') return '도형 추가';
-    if (entry.type === 'imageMerge') return '붙여넣기 합성';
-    return '이미지 변경';
-  }, []);
 
   // Initialize with a blank white canvas
   useEffect(() => {
@@ -194,9 +143,6 @@ export default function App() {
       selection: snap.selection ? { ...snap.selection } : null,
       zoom: snap.zoom,
       position: { ...snap.position },
-      baseLayerVisible: snap.baseLayerVisible ?? true,
-      shapeLayerVisible: snap.shapeLayerVisible ?? true,
-      activeLayer: snap.activeLayer ?? 'shape',
     };
 
     if (snap.imageDataUrl) {
@@ -229,9 +175,6 @@ export default function App() {
       selection: source.selection ? { ...source.selection } : null,
       zoom: source.zoom,
       position: { ...source.position },
-      baseLayerVisible: source.baseLayerVisible,
-      shapeLayerVisible: source.shapeLayerVisible,
-      activeLayer: source.activeLayer,
     };
   }, []);
 
@@ -292,13 +235,8 @@ export default function App() {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    if (state.baseLayerVisible) {
-      ctx.drawImage(state.image, 0, 0);
-    }
-
-    if (state.shapeLayerVisible) {
-      renderShapesOnContext(ctx, state.shapes);
-    }
+    ctx.drawImage(state.image, 0, 0);
+    renderShapesOnContext(ctx, state.shapes);
     
     const extension = format.split('/')[1];
     const finalFilename = filename || `edited-${state.fileName?.split('.')[0] || 'image'}.${extension}`;
@@ -317,18 +255,6 @@ export default function App() {
 
   const handleToolChange = (tool: EditorState['tool']) =>
     setState(prev => {
-      let activeLayer = prev.activeLayer;
-      if (tool === 'fill') activeLayer = 'base';
-      else if (
-        tool === 'line' ||
-        tool === 'rect' ||
-        tool === 'ellipse' ||
-        tool === 'polyline' ||
-        tool === 'freehand' ||
-        tool === 'text'
-      ) {
-        activeLayer = 'shape';
-      }
       const textDraft =
         tool === 'text' && prev.image
           ? {
@@ -347,7 +273,6 @@ export default function App() {
         polylineDraft: null,
         freehandDraft: null,
         textDraft,
-        activeLayer,
       };
     });
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
@@ -369,15 +294,6 @@ export default function App() {
     writeFillIgnoreAlpha(fillIgnoreAlpha);
     setState(prev => ({ ...prev, fillIgnoreAlpha }));
   };
-  const handleSetLayerVisible = (layer: 'base' | 'shape', visible: boolean) =>
-    setState(prev =>
-      layer === 'base'
-        ? { ...prev, baseLayerVisible: visible }
-        : { ...prev, shapeLayerVisible: visible }
-    );
-  const handleSetActiveLayer = (layer: 'base' | 'shape') =>
-    setState(prev => ({ ...prev, activeLayer: layer }));
-
   const handleDeleteLastShape = useCallback(() => {
     const undoPoint = buildStateSnapshot(stateRef.current);
     const prevStack = undoStackRef.current;
@@ -612,9 +528,6 @@ export default function App() {
         selection: s.selection ? { ...s.selection } : null,
         zoom: s.zoom,
         position: { ...s.position },
-        baseLayerVisible: s.baseLayerVisible,
-        shapeLayerVisible: s.shapeLayerVisible,
-        activeLayer: s.activeLayer,
       };
     };
 
@@ -631,9 +544,6 @@ export default function App() {
         fileName: 'pasted-image.png',
         zoom: 1,
         position: { x: 50, y: 50 },
-        baseLayerVisible: true,
-        shapeLayerVisible: true,
-        activeLayer: 'shape',
         shapes: [],
         selection: null
       }));
@@ -847,69 +757,15 @@ export default function App() {
         onPaste={handlePaste}
       />
       
-      <main className="flex-1 flex overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div 
-            key="editor"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex-1 flex flex-col"
-          >
-            <CanvasEditor 
-              state={state} 
-              setState={setState} 
-              onImageLoad={handleImageLoad}
-              onPaste={() => handlePaste()}
-              onShapeCommitted={(label) => appendUndoEntry({ type: 'shape', label })}
-              onPrepareImageUndo={handlePrepareImageUndoForPaint}
-            />
-          </motion.div>
-        </AnimatePresence>
-        <aside className="w-64 border-l border-neutral-800 bg-neutral-900/80 flex flex-col shrink-0">
-          <div className="px-3 py-2 border-b border-neutral-800 text-xs font-semibold text-neutral-300">
-            히스토리
-          </div>
-          <div className="px-3 py-2 border-b border-neutral-800 text-[11px] text-neutral-500">
-            Undo {undoStack.length} / Redo {redoStack.length}
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {undoStack.length === 0 ? (
-              <p className="text-xs text-neutral-500 px-1 py-2">기록된 작업이 없습니다.</p>
-            ) : (
-              undoStack
-                .slice(-30)
-                .reverse()
-                .map((entry, idx) => (
-                  <div
-                    key={`${entry.type}-${undoStack.length - idx}`}
-                    className="rounded border border-neutral-800 bg-neutral-950/70 px-2 py-1.5 text-xs text-neutral-300"
-                  >
-                    {getUndoEntryLabel(entry)}
-                  </div>
-                ))
-            )}
-          </div>
-          <div className="border-t border-neutral-800">
-            <div className="px-3 py-2 text-xs font-semibold text-neutral-300">레이어</div>
-            <div className="px-2 pb-2 space-y-1">
-              <LayerRow
-                name="배경 이미지"
-                visible={state.baseLayerVisible}
-                active={state.activeLayer === 'base'}
-                onToggleVisible={(v) => handleSetLayerVisible('base', v)}
-                onSelect={() => handleSetActiveLayer('base')}
-              />
-              <LayerRow
-                name="도형"
-                visible={state.shapeLayerVisible}
-                active={state.activeLayer === 'shape'}
-                onToggleVisible={(v) => handleSetLayerVisible('shape', v)}
-                onSelect={() => handleSetActiveLayer('shape')}
-              />
-            </div>
-          </div>
-        </aside>
+      <main className="flex-1 flex overflow-hidden min-h-0">
+        <CanvasEditor
+          state={state}
+          setState={setState}
+          onImageLoad={handleImageLoad}
+          onPaste={() => handlePaste()}
+          onShapeCommitted={(label) => appendUndoEntry({ type: 'shape', label })}
+          onPrepareImageUndo={handlePrepareImageUndoForPaint}
+        />
       </main>
 
       <SaveModal 

@@ -154,12 +154,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     ctx.translate(state.position.x, state.position.y);
     ctx.scale(state.zoom, state.zoom);
 
-    if (state.baseLayerVisible) {
-      ctx.drawImage(state.image, 0, 0);
-    }
+    ctx.drawImage(state.image, 0, 0);
 
-    if (state.shapeLayerVisible) {
-      state.shapes.forEach(shape => {
+    state.shapes.forEach(shape => {
         if (shape.type === 'text') {
           fillTextShapeOnContext(ctx, shape);
           return;
@@ -185,9 +182,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           }
         }
         ctx.stroke();
-      });
+    });
 
-      if (state.activeShape) {
+    if (state.activeShape) {
         ctx.strokeStyle = state.activeShape.color;
         ctx.lineWidth = state.activeShape.lineWidth / state.zoom;
         ctx.beginPath();
@@ -204,9 +201,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         }
         ctx.stroke();
-      }
+    }
 
-      if (state.polylineDraft && state.polylineDraft.points.length > 0) {
+    if (state.polylineDraft && state.polylineDraft.points.length > 0) {
         const pts = state.polylineDraft.points;
         ctx.strokeStyle = state.polylineDraft.color;
         ctx.lineWidth = state.polylineDraft.lineWidth / state.zoom;
@@ -219,9 +216,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.lineTo(polyHover.x, polyHover.y);
         }
         ctx.stroke();
-      }
+    }
 
-      if (state.freehandDraft && state.freehandDraft.points.length > 1) {
+    if (state.freehandDraft && state.freehandDraft.points.length > 1) {
         const pts = state.freehandDraft.points;
         ctx.strokeStyle = state.freehandDraft.color;
         ctx.lineWidth = state.freehandDraft.lineWidth / state.zoom;
@@ -231,9 +228,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.lineTo(pts[i].x, pts[i].y);
         }
         ctx.stroke();
-      }
+    }
 
-      if (state.tool === 'text' && state.textDraft) {
+    if (state.tool === 'text' && state.textDraft) {
         const d = state.textDraft;
         ctx.save();
         if (d.text.trim()) {
@@ -254,7 +251,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.stroke();
         }
         ctx.restore();
-      }
     }
 
     if (state.selection) {
@@ -309,7 +305,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handlePolylineClick = (e: React.MouseEvent) => {
     if (state.tool !== 'polyline' || !state.image) return;
-    if (state.activeLayer !== 'shape' || !state.shapeLayerVisible) return;
     const imgPos = toImageCoords(getMousePos(e));
     setState(prev => {
       if (prev.tool !== 'polyline') return prev;
@@ -336,7 +331,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleFreehandClick = (e: React.MouseEvent) => {
     if (state.tool !== 'freehand' || !state.image) return;
-    if (state.activeLayer !== 'shape' || !state.shapeLayerVisible) return;
     const imgPos = toImageCoords(getMousePos(e));
     setState(prev => {
       if (prev.tool !== 'freehand') return prev;
@@ -375,7 +369,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleFillClick = (e: React.MouseEvent) => {
     if (state.tool !== 'fill' || !state.image) return;
-    if (state.activeLayer !== 'base' || !state.baseLayerVisible) return;
     const imgPos = toImageCoords(getMousePos(e));
     const ix = Math.floor(imgPos.x);
     const iy = Math.floor(imgPos.y);
@@ -392,7 +385,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(img, 0, 0);
-    /** 도형 외곽선을 비트맵에 합성한 뒤 채우기(레이어 분리 이전 동작과 동일) */
+    /** 도형 외곽선을 비트맵에 합성한 뒤 채우기 */
     strokeShapesOnContext(ctx, shapes);
 
     let imageData: ImageData;
@@ -445,12 +438,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     } else if (e.button === 0) {
       if (state.tool === 'select') {
         setState(prev => ({ ...prev, isSelecting: true, selection: null }));
-      } else if (
-        state.tool === 'text' &&
-        state.image &&
-        state.activeLayer === 'shape' &&
-        state.shapeLayerVisible
-      ) {
+      } else if (state.tool === 'text' && state.image) {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
@@ -467,9 +455,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'polyline' &&
         state.tool !== 'freehand' &&
         state.tool !== 'fill' &&
-        state.tool !== 'text' &&
-        state.activeLayer === 'shape' &&
-        state.shapeLayerVisible
+        state.tool !== 'text'
       ) {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
@@ -498,7 +484,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setPolyHover(null);
     }
 
-    if (state.tool === 'freehand' && state.freehandDraft && state.activeLayer === 'shape' && state.shapeLayerVisible) {
+    if (state.tool === 'freehand' && state.freehandDraft) {
       const current = toImageCoords(pos);
       setState(prev => {
         if (!prev.freehandDraft || prev.tool !== 'freehand') return prev;
