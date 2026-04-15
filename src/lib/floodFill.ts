@@ -74,12 +74,21 @@ export function floodFillImageData(
   }
 
   const stack: number[] = [startY * w + startX];
+  const visited = new Uint8Array(w * h);
   let filled = 0;
-  const maxOps = w * h + 1;
+  /** 방문 처리 없이 스택만으로는 같은 픽셀이 반복되어 maxOps에서 조기 종료될 수 있음 */
+  const maxOps = w * h * 8 + 1;
   let ops = 0;
+
+  const push8 = (nx: number, ny: number) => {
+    if (nx < 0 || ny < 0 || nx >= w || ny >= h) return;
+    stack.push(ny * w + nx);
+  };
 
   while (stack.length > 0 && ops++ < maxOps) {
     const p = stack.pop()!;
+    if (visited[p]) continue;
+    visited[p] = 1;
     const x = p % w;
     const y = (p / w) | 0;
     if (x < 0 || y < 0 || x >= w || y >= h) continue;
@@ -92,7 +101,14 @@ export function floodFillImageData(
     data[i + 3] = fill.a;
     filled++;
 
-    stack.push(y * w + (x + 1), y * w + (x - 1), (y + 1) * w + x, (y - 1) * w + x);
+    push8(x + 1, y);
+    push8(x - 1, y);
+    push8(x, y + 1);
+    push8(x, y - 1);
+    push8(x + 1, y + 1);
+    push8(x - 1, y + 1);
+    push8(x + 1, y - 1);
+    push8(x - 1, y - 1);
   }
 
   return filled;
