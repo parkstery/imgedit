@@ -2,7 +2,11 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { EditorState, Point, Rect, Shape } from '../types';
 import { cn } from '../lib/utils';
 import { floodFillImageData, hexToRgba } from '../lib/floodFill';
-import { fillTextShapeOnContext, CANVAS_TEXT_FONT_STACK } from '../lib/drawShapes';
+import {
+  fillTextShapeOnContext,
+  CANVAS_TEXT_FONT_STACK,
+  strokeShapesOnContext,
+} from '../lib/drawShapes';
 
 interface CanvasEditorProps {
   state: EditorState;
@@ -375,7 +379,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const imgPos = toImageCoords(getMousePos(e));
     const ix = Math.floor(imgPos.x);
     const iy = Math.floor(imgPos.y);
-    const { image: img, color: fillHex } = state;
+    const { image: img, shapes, color: fillHex } = state;
 
     if (ix < 0 || iy < 0 || ix >= img.width || iy >= img.height) return;
 
@@ -388,6 +392,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(img, 0, 0);
+    /** 도형 외곽선을 비트맵에 합성한 뒤 채우기(레이어 분리 이전 동작과 동일) */
+    strokeShapesOnContext(ctx, shapes);
 
     let imageData: ImageData;
     try {
@@ -416,6 +422,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setState(prev => ({
         ...prev,
         image: nextImg,
+        shapes: [],
+        activeShape: null,
         selection: null,
         polylineDraft: null,
         freehandDraft: null,
