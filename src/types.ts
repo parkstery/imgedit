@@ -50,6 +50,8 @@ export interface Shape {
   /** type이 text일 때 (x1,y1) 왼쪽 베이스라인, fillText 기준 */
   text?: string;
   fontSize?: number;
+  /** 회전 각(라디안). 기본 0. 회전 앵커는 항상 stored AABB의 중심. */
+  rotation?: number;
 }
 
 export interface EditorState {

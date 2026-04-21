@@ -6,12 +6,20 @@ import {
   fillTextShapeOnContext,
   CANVAS_TEXT_FONT_STACK,
   strokeShapesOnContext,
+  getShapeRotationCenter,
 } from '../lib/drawShapes';
 import {
   cloneShape,
   getShapeBounds,
   pickTopShape,
   translateShape,
+  getOrientedHandles,
+  hitTestHandle,
+  applyResize,
+  applyRotation,
+  cursorForHandle,
+  type ResizeHandleId,
+  type PickedHandle,
 } from '../lib/shapeGeometry';
 
 interface CanvasEditorProps {
@@ -70,8 +78,40 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     snapshotBefore: Shape[];
     hasMoved: boolean;
   } | null>(null);
+  /** 리사이즈 드래그 중 상태. 단일 도형 기준. */
+  const resizeStateRef = useRef<{
+    shapeId: string;
+    handle: ResizeHandleId;
+    startShape: Shape;
+    snapshotBefore: Shape[];
+    hasMoved: boolean;
+  } | null>(null);
+  /** 회전 드래그 중 상태. */
+  const rotateStateRef = useRef<{
+    shapeId: string;
+    startShape: Shape;
+    startPointer: Point;
+    snapshotBefore: Shape[];
+    hasMoved: boolean;
+  } | null>(null);
   /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
   const [hoveringShape, setHoveringShape] = useState(false);
+  /** 선택 도구에서 핸들 위 호버 상태 (커서 피드백용) */
+  const [hoverHandle, setHoverHandle] = useState<PickedHandle | null>(null);
+
+  const ROTATION_HANDLE_OFFSET_PX = 24; // 화면 픽셀 기준 상단에서 떨어지는 거리
+  const HANDLE_HIT_TOL_PX = 10;
+  const HANDLE_DRAW_SIZE_PX = 9;
+
+  /** 현재 상태에서 단일 선택 도형의 핸들. 선택이 1개가 아니면 null. */
+  const getActiveHandles = useCallback(() => {
+    if (state.selectedShapeIds.length !== 1) return null;
+    const selId = state.selectedShapeIds[0];
+    const sh = state.shapes.find(s => s.id === selId);
+    if (!sh) return null;
+    const offset = ROTATION_HANDLE_OFFSET_PX / state.zoom;
+    return { shape: sh, handles: getOrientedHandles(sh, offset) };
+  }, [state.selectedShapeIds, state.shapes, state.zoom]);
 
   const commitPolylineDraft = useCallback(() => {
     setState(prev => {
@@ -224,6 +264,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           fillTextShapeOnContext(ctx, shape);
           return;
         }
+        const r = shape.rotation ?? 0;
+        const rotated = r !== 0;
+        if (rotated) {
+          const c = getShapeRotationCenter(shape);
+          ctx.save();
+          ctx.translate(c.x, c.y);
+          ctx.rotate(r);
+          ctx.translate(-c.x, -c.y);
+        }
         ctx.strokeStyle = shape.color;
         ctx.lineWidth = shape.lineWidth / state.zoom;
         ctx.beginPath();
@@ -245,6 +294,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           }
         }
         ctx.stroke();
+        if (rotated) ctx.restore();
     });
 
     if (state.activeShape) {
@@ -331,31 +381,60 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     if (state.selectedShapeIds.length > 0) {
       const selectedSet = new Set(state.selectedShapeIds);
+      const isSingle = state.selectedShapeIds.length === 1;
       ctx.strokeStyle = '#22d3ee';
       ctx.lineWidth = 1.5 / state.zoom;
       ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
-      const pad = 3 / state.zoom;
       state.shapes.forEach(sh => {
         if (!selectedSet.has(sh.id)) return;
-        const b = getShapeBounds(sh);
-        if (!b) return;
-        ctx.strokeRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2);
+        const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
+        const h = getOrientedHandles(sh, hOff);
+        if (!h) return;
+        const [p0, p1, p2, p3] = h.cornersWorld;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.lineTo(p3.x, p3.y);
+        ctx.closePath();
+        ctx.stroke();
       });
       ctx.setLineDash([]);
-      const handleSize = 6 / state.zoom;
-      ctx.fillStyle = '#22d3ee';
-      state.shapes.forEach(sh => {
-        if (!selectedSet.has(sh.id)) return;
-        const b = getShapeBounds(sh);
-        if (!b) return;
-        const hx = [b.x - pad, b.x + b.width + pad];
-        const hy = [b.y - pad, b.y + b.height + pad];
-        for (const x of hx) {
-          for (const y of hy) {
-            ctx.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+
+      if (isSingle) {
+        const sh = state.shapes.find(s => s.id === state.selectedShapeIds[0]);
+        if (sh) {
+          const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
+          const h = getOrientedHandles(sh, hOff);
+          if (h) {
+            const handleSize = HANDLE_DRAW_SIZE_PX / state.zoom;
+            ctx.lineWidth = 1 / state.zoom;
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#0891b2';
+            const drawSquare = (p: Point) => {
+              const s = handleSize;
+              ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+              ctx.strokeRect(p.x - s / 2, p.y - s / 2, s, s);
+            };
+            h.corners.forEach(c => drawSquare(c.world));
+            if (sh.type !== 'text') {
+              h.edges.forEach(ed => drawSquare(ed.world));
+            }
+            const t = h.corners[0];
+            const top = { x: (h.corners[0].world.x + h.corners[1].world.x) / 2, y: (h.corners[0].world.y + h.corners[1].world.y) / 2 };
+            ctx.beginPath();
+            ctx.moveTo(top.x, top.y);
+            ctx.lineTo(h.rotationHandle.x, h.rotationHandle.y);
+            ctx.stroke();
+            const rr = (handleSize * 0.6);
+            ctx.beginPath();
+            ctx.arc(h.rotationHandle.x, h.rotationHandle.y, rr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            void t;
           }
         }
-      });
+      }
     }
 
     ctx.restore();
@@ -526,11 +605,43 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const pos = getMousePos(e);
     setDragStart(pos);
 
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (e.button === 1 || (e.button === 0 && e.altKey && !(state.tool === 'select' && state.selectedShapeIds.length === 1))) {
       setState(prev => ({ ...prev, isPanning: true }));
     } else if (e.button === 0) {
       if (state.tool === 'select') {
         const imgPos = toImageCoords(pos);
+        if (state.selectedShapeIds.length === 1) {
+          const active = getActiveHandles();
+          if (active?.handles) {
+            const picked = hitTestHandle(
+              active.handles,
+              imgPos,
+              HANDLE_HIT_TOL_PX / state.zoom,
+              { includeEdges: active.shape.type !== 'text' },
+            );
+            if (picked) {
+              if (picked.kind === 'rotation') {
+                rotateStateRef.current = {
+                  shapeId: active.shape.id,
+                  startShape: cloneShape(active.shape),
+                  startPointer: imgPos,
+                  snapshotBefore: state.shapes.map(cloneShape),
+                  hasMoved: false,
+                };
+              } else {
+                resizeStateRef.current = {
+                  shapeId: active.shape.id,
+                  handle: picked.id as ResizeHandleId,
+                  startShape: cloneShape(active.shape),
+                  snapshotBefore: state.shapes.map(cloneShape),
+                  hasMoved: false,
+                };
+              }
+              setState(prev => ({ ...prev, isSelecting: false, selection: null }));
+              return;
+            }
+          }
+        }
         const tol = 6 / state.zoom;
         const hit = pickTopShape(state.shapes, imgPos, tol);
         if (hit) {
@@ -597,6 +708,33 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
 
+    if (resizeStateRef.current) {
+      const current = toImageCoords(pos);
+      const st = resizeStateRef.current;
+      const updated = applyResize(st.startShape, st.handle, current, {
+        anchorAtCenter: e.altKey,
+        uniform: e.shiftKey,
+      });
+      st.hasMoved = true;
+      setState(prev => ({
+        ...prev,
+        shapes: prev.shapes.map(sh => (sh.id === st.shapeId ? updated : sh)),
+      }));
+      return;
+    }
+
+    if (rotateStateRef.current) {
+      const current = toImageCoords(pos);
+      const st = rotateStateRef.current;
+      const updated = applyRotation(st.startShape, st.startPointer, current, e.shiftKey);
+      st.hasMoved = true;
+      setState(prev => ({
+        ...prev,
+        shapes: prev.shapes.map(sh => (sh.id === st.shapeId ? updated : sh)),
+      }));
+      return;
+    }
+
     if (moveStateRef.current) {
       const { startImagePoint, initialById } = moveStateRef.current;
       const current = toImageCoords(pos);
@@ -620,11 +758,29 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       state.image
     ) {
       const imgPos = toImageCoords(pos);
-      const tol = 6 / state.zoom;
-      const hit = pickTopShape(state.shapes, imgPos, tol);
-      setHoveringShape(!!hit);
-    } else if (hoveringShape) {
-      setHoveringShape(false);
+      let picked: PickedHandle | null = null;
+      if (state.selectedShapeIds.length === 1) {
+        const active = getActiveHandles();
+        if (active?.handles) {
+          picked = hitTestHandle(active.handles, imgPos, HANDLE_HIT_TOL_PX / state.zoom, {
+            includeEdges: active.shape.type !== 'text',
+          });
+        }
+      }
+      if (picked) {
+        if (!hoverHandle || hoverHandle.id !== picked.id || hoverHandle.kind !== picked.kind) {
+          setHoverHandle(picked);
+        }
+        if (hoveringShape) setHoveringShape(false);
+      } else {
+        if (hoverHandle) setHoverHandle(null);
+        const tol = 6 / state.zoom;
+        const hit = pickTopShape(state.shapes, imgPos, tol);
+        if (!!hit !== hoveringShape) setHoveringShape(!!hit);
+      }
+    } else {
+      if (hoverHandle) setHoverHandle(null);
+      if (hoveringShape) setHoveringShape(false);
     }
 
     if (state.polylineDraft) {
@@ -688,6 +844,22 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (resizeStateRef.current) {
+      const { snapshotBefore, hasMoved } = resizeStateRef.current;
+      resizeStateRef.current = null;
+      if (hasMoved) onShapesMutation?.(snapshotBefore, '도형 크기조절');
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+    if (rotateStateRef.current) {
+      const { snapshotBefore, hasMoved } = rotateStateRef.current;
+      rotateStateRef.current = null;
+      if (hasMoved) onShapesMutation?.(snapshotBefore, '도형 회전');
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
     if (moveStateRef.current) {
       const { snapshotBefore, hasMoved } = moveStateRef.current;
       moveStateRef.current = null;
@@ -774,13 +946,30 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ? 'cursor-paint-bucket'
           : state.tool === 'text'
             ? 'cursor-text'
-            : state.tool === 'select' && (hoveringShape || moveStateRef.current)
-              ? 'cursor-move'
-              : state.tool === 'select'
-                ? 'cursor-default'
-                : 'cursor-crosshair',
+            : state.tool === 'select' && (hoverHandle || resizeStateRef.current || rotateStateRef.current)
+              ? null
+              : state.tool === 'select' && (hoveringShape || moveStateRef.current)
+                ? 'cursor-move'
+                : state.tool === 'select'
+                  ? 'cursor-default'
+                  : 'cursor-crosshair',
         isDraggingOver && 'bg-blue-500/10'
       )}
+      style={(() => {
+        if (state.tool !== 'select') return undefined;
+        if (rotateStateRef.current) return { cursor: 'grabbing' } as React.CSSProperties;
+        if (resizeStateRef.current) {
+          const sh = state.shapes.find(s => s.id === resizeStateRef.current!.shapeId);
+          return { cursor: cursorForHandle(resizeStateRef.current.handle, sh?.rotation ?? 0) } as React.CSSProperties;
+        }
+        if (hoverHandle) {
+          const sh = state.shapes.find(s => s.id === state.selectedShapeIds[0]);
+          const r = sh?.rotation ?? 0;
+          if (hoverHandle.kind === 'rotation') return { cursor: 'grab' } as React.CSSProperties;
+          return { cursor: cursorForHandle(hoverHandle.id as ResizeHandleId, r) } as React.CSSProperties;
+        }
+        return undefined;
+      })()}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
