@@ -57,10 +57,18 @@ const INITIAL_STATE: EditorState = {
   fillIgnoreAlpha: false,
   shapes: [],
   activeShape: null,
+  selectedShapeIds: [],
   polylineDraft: null,
   freehandDraft: null,
   textDraft: null,
 };
+
+function cloneShapeDeep(shape: Shape): Shape {
+  return {
+    ...shape,
+    points: shape.points ? shape.points.map(p => ({ x: p.x, y: p.y })) : undefined,
+  };
+}
 
 function loadFillToolPrefsFromStorage(): Pick<EditorState, 'fillTolerance' | 'fillIgnoreAlpha'> {
   return {
@@ -183,6 +191,14 @@ export default function App() {
     if (snap) appendUndoEntry({ type: 'image', snapshot: snap, label: '페인트통 채우기' });
   }, [buildStateSnapshot, appendUndoEntry]);
 
+  const handleShapesMutation = useCallback((beforeShapes: Shape[], label?: string) => {
+    appendUndoEntry({
+      type: 'shapesSnapshot',
+      beforeShapes: beforeShapes.map(cloneShapeDeep),
+      label,
+    });
+  }, [appendUndoEntry]);
+
   const handleImageLoad = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -270,6 +286,7 @@ export default function App() {
         ...prev,
         tool,
         selection: null,
+        selectedShapeIds: tool === 'select' ? prev.selectedShapeIds : [],
         polylineDraft: null,
         freehandDraft: null,
         textDraft,
@@ -314,12 +331,15 @@ export default function App() {
     undoStackRef.current = nextStack;
     setUndoStack(nextStack);
     if (last.type === 'shape') {
-      setState(s => ({ ...s, shapes: s.shapes.slice(0, -1) }));
+      setState(s => ({ ...s, shapes: s.shapes.slice(0, -1), selectedShapeIds: [] }));
     } else if (last.type === 'image' || last.type === 'imageMerge') {
       if (pasteUndoRef.current.length > 0) {
         pasteUndoRef.current = pasteUndoRef.current.slice(0, -1);
       }
       applyImageSnapshot(last.snapshot);
+    } else if (last.type === 'shapesSnapshot') {
+      const restored = last.beforeShapes.map(cloneShapeDeep);
+      setState(s => ({ ...s, shapes: restored, selectedShapeIds: [] }));
     }
     if (undoPoint) {
       const nextRedo = [...redoStackRef.current, undoPoint];
@@ -350,7 +370,7 @@ export default function App() {
     undoStackRef.current = next;
     setUndoStack(next);
     clearRedoStack();
-    setState(prev => ({ ...prev, shapes: [] }));
+    setState(prev => ({ ...prev, shapes: [], selectedShapeIds: [] }));
   };
 
   const handleResize = (newWidth: number, newHeight: number) => {
@@ -764,6 +784,7 @@ export default function App() {
           onImageLoad={handleImageLoad}
           onPaste={() => handlePaste()}
           onShapeCommitted={(label) => appendUndoEntry({ type: 'shape', label })}
+          onShapesMutation={handleShapesMutation}
           onPrepareImageUndo={handlePrepareImageUndoForPaint}
         />
       </main>

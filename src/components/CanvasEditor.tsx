@@ -7,6 +7,12 @@ import {
   CANVAS_TEXT_FONT_STACK,
   strokeShapesOnContext,
 } from '../lib/drawShapes';
+import {
+  cloneShape,
+  getShapeBounds,
+  pickTopShape,
+  translateShape,
+} from '../lib/shapeGeometry';
 
 interface CanvasEditorProps {
   state: EditorState;
@@ -14,6 +20,8 @@ interface CanvasEditorProps {
   onImageLoad: (file: File) => void;
   onPaste: () => void;
   onShapeCommitted?: (label?: string) => void;
+  /** 도형 배열이 (추가가 아닌) 변형/삭제될 때: 변경 전 배열을 snapshot 으로 Undo 스택에 쌓음 */
+  onShapesMutation?: (beforeShapes: Shape[], label?: string) => void;
   /** 페인트통 등 비트맵 변경 직전에 Undo용 스냅샷을 쌓을 때 호출 */
   onPrepareImageUndo?: () => void;
 }
@@ -24,6 +32,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onImageLoad,
   onPaste,
   onShapeCommitted,
+  onShapesMutation,
   onPrepareImageUndo,
 }) => {
   const getShapeCommitLabel = useCallback((tool: EditorState['tool']) => {
@@ -53,6 +62,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [polyHover, setPolyHover] = useState<Point | null>(null);
   /** mouseup 직후 mouseleave가 한 번 더 오며 도형이 이중 커밋되는 것을 막음 */
   const shapeEndGuardRef = useRef(false);
+  /** 선택 도구 도형 이동 중 상태. initialById: 이동 시작 시점의 해당 도형 원본. snapshotBefore: Undo용 전체 배열. */
+  const moveStateRef = useRef<{
+    startImagePoint: Point;
+    shapeIds: string[];
+    initialById: Map<string, Shape>;
+    snapshotBefore: Shape[];
+    hasMoved: boolean;
+  } | null>(null);
+  /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
+  const [hoveringShape, setHoveringShape] = useState(false);
 
   const commitPolylineDraft = useCallback(() => {
     setState(prev => {
@@ -105,7 +124,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   useEffect(() => {
     if (state.tool !== 'polyline') setPolyHover(null);
+    if (state.tool !== 'select') setHoveringShape(false);
   }, [state.tool]);
+
+  const isEditableTarget = (t: EventTarget | null) =>
+    t instanceof HTMLInputElement ||
+    t instanceof HTMLTextAreaElement ||
+    (t instanceof HTMLElement && t.isContentEditable);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -135,10 +160,48 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           setState(prev => ({ ...prev, freehandDraft: null }));
         }
       }
+
+      if (isEditableTarget(e.target)) return;
+
+      if (state.tool === 'select' && state.selectedShapeIds.length > 0) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setState(prev => ({ ...prev, selectedShapeIds: [] }));
+          return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          const before = state.shapes;
+          const removing = new Set(state.selectedShapeIds);
+          setState(prev => ({
+            ...prev,
+            shapes: prev.shapes.filter(sh => !removing.has(sh.id)),
+            selectedShapeIds: [],
+          }));
+          onShapesMutation?.(before, '도형 삭제');
+          return;
+        }
+        const arrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+          || e.key === 'ArrowUp' || e.key === 'ArrowDown';
+        if (arrow) {
+          e.preventDefault();
+          const step = e.shiftKey ? 10 : 1;
+          const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+          const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+          const before = state.shapes;
+          const movingIds = new Set(state.selectedShapeIds);
+          setState(prev => ({
+            ...prev,
+            shapes: prev.shapes.map(sh => (movingIds.has(sh.id) ? translateShape(sh, dx, dy) : sh)),
+          }));
+          onShapesMutation?.(before, '도형 이동');
+          return;
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.tool, state.polylineDraft, state.freehandDraft, state.textDraft, commitPolylineDraft, commitFreehandDraft, setState]);
+  }, [state.tool, state.polylineDraft, state.freehandDraft, state.textDraft, state.selectedShapeIds, state.shapes, commitPolylineDraft, commitFreehandDraft, setState, onShapesMutation]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -263,6 +326,36 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.selection.width,
         state.selection.height
       );
+      ctx.setLineDash([]);
+    }
+
+    if (state.selectedShapeIds.length > 0) {
+      const selectedSet = new Set(state.selectedShapeIds);
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 1.5 / state.zoom;
+      ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
+      const pad = 3 / state.zoom;
+      state.shapes.forEach(sh => {
+        if (!selectedSet.has(sh.id)) return;
+        const b = getShapeBounds(sh);
+        if (!b) return;
+        ctx.strokeRect(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2);
+      });
+      ctx.setLineDash([]);
+      const handleSize = 6 / state.zoom;
+      ctx.fillStyle = '#22d3ee';
+      state.shapes.forEach(sh => {
+        if (!selectedSet.has(sh.id)) return;
+        const b = getShapeBounds(sh);
+        if (!b) return;
+        const hx = [b.x - pad, b.x + b.width + pad];
+        const hy = [b.y - pad, b.y + b.height + pad];
+        for (const x of hx) {
+          for (const y of hy) {
+            ctx.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+          }
+        }
+      });
     }
 
     ctx.restore();
@@ -437,7 +530,33 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setState(prev => ({ ...prev, isPanning: true }));
     } else if (e.button === 0) {
       if (state.tool === 'select') {
-        setState(prev => ({ ...prev, isSelecting: true, selection: null }));
+        const imgPos = toImageCoords(pos);
+        const tol = 6 / state.zoom;
+        const hit = pickTopShape(state.shapes, imgPos, tol);
+        if (hit) {
+          const ids = state.selectedShapeIds.includes(hit.id) && state.selectedShapeIds.length > 0
+            ? state.selectedShapeIds
+            : [hit.id];
+          const initialById = new Map<string, Shape>();
+          state.shapes.forEach(sh => {
+            if (ids.includes(sh.id)) initialById.set(sh.id, cloneShape(sh));
+          });
+          moveStateRef.current = {
+            startImagePoint: imgPos,
+            shapeIds: ids,
+            initialById,
+            snapshotBefore: state.shapes.map(cloneShape),
+            hasMoved: false,
+          };
+          setState(prev => ({
+            ...prev,
+            selectedShapeIds: ids,
+            selection: null,
+            isSelecting: false,
+          }));
+        } else {
+          setState(prev => ({ ...prev, isSelecting: true, selection: null, selectedShapeIds: [] }));
+        }
       } else if (state.tool === 'text' && state.image) {
         const imgPos = toImageCoords(pos);
         setState(prev => ({
@@ -477,6 +596,36 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
+
+    if (moveStateRef.current) {
+      const { startImagePoint, initialById } = moveStateRef.current;
+      const current = toImageCoords(pos);
+      const dx = current.x - startImagePoint.x;
+      const dy = current.y - startImagePoint.y;
+      if (dx !== 0 || dy !== 0) moveStateRef.current.hasMoved = true;
+      setState(prev => ({
+        ...prev,
+        shapes: prev.shapes.map(sh => {
+          const init = initialById.get(sh.id);
+          return init ? translateShape(init, dx, dy) : sh;
+        }),
+      }));
+      return;
+    }
+
+    if (
+      state.tool === 'select' &&
+      !state.isSelecting &&
+      !state.isPanning &&
+      state.image
+    ) {
+      const imgPos = toImageCoords(pos);
+      const tol = 6 / state.zoom;
+      const hit = pickTopShape(state.shapes, imgPos, tol);
+      setHoveringShape(!!hit);
+    } else if (hoveringShape) {
+      setHoveringShape(false);
+    }
 
     if (state.polylineDraft) {
       setPolyHover(toImageCoords(pos));
@@ -539,6 +688,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (moveStateRef.current) {
+      const { snapshotBefore, hasMoved } = moveStateRef.current;
+      moveStateRef.current = null;
+      if (hasMoved) {
+        onShapesMutation?.(snapshotBefore, '도형 이동');
+      }
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
     if (state.activeShape) {
       if (shapeEndGuardRef.current) {
         setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
@@ -615,7 +774,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ? 'cursor-paint-bucket'
           : state.tool === 'text'
             ? 'cursor-text'
-            : 'cursor-crosshair',
+            : state.tool === 'select' && (hoveringShape || moveStateRef.current)
+              ? 'cursor-move'
+              : state.tool === 'select'
+                ? 'cursor-default'
+                : 'cursor-crosshair',
         isDraggingOver && 'bg-blue-500/10'
       )}
       onMouseDown={handleMouseDown}

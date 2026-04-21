@@ -71,6 +71,8 @@ export interface EditorState {
   fillIgnoreAlpha: boolean;
   shapes: Shape[];
   activeShape: Shape | null;
+  /** 선택된 벡터 도형 id들. 영역 selection(Rect)과는 개념이 다름. */
+  selectedShapeIds: string[];
   /** 폴리라인 그리는 중 (클릭으로 점 추가, Enter·우클릭으로 완료) */
   polylineDraft: PolylineDraft | null;
   /** 자유그리기 중 (첫 클릭 시작, 다음 클릭 완료) */
@@ -95,4 +97,6 @@ export interface ImageUndoSnapshot {
 export type UndoEntry =
   | { type: 'shape'; label?: string }
   | { type: 'image'; snapshot: ImageUndoSnapshot; label?: string }
-  | { type: 'imageMerge'; snapshot: ImageUndoSnapshot; label?: string };
+  | { type: 'imageMerge'; snapshot: ImageUndoSnapshot; label?: string }
+  /** 벡터 도형 배열 변경(이동/삭제/넛지). beforeShapes 로 되돌림. */
+  | { type: 'shapesSnapshot'; beforeShapes: Shape[]; label?: string };
