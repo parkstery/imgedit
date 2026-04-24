@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   FolderOpen, 
   Save, 
@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
-import { AdvancedColorModal } from './AdvancedColorModal';
+import { AdvancedColorWindow } from './AdvancedColorWindow';
 
 /** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
 const PAINT_PALETTE = [
@@ -150,6 +150,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onPaste
 }) => {
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
+  const advancedColorAnchorRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30">
@@ -371,6 +372,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
         <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0">
           <button
+            ref={advancedColorAnchorRef}
             type="button"
             onClick={() => setAdvancedColorOpen(true)}
             className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -385,8 +387,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <Palette size={12} />
             </div>
           </button>
-          <AdvancedColorModal
+          <AdvancedColorWindow
             isOpen={advancedColorOpen}
+            anchorRef={advancedColorAnchorRef}
             color={state.color}
             onColorChange={onColorChange}
             onRequestClose={() => setAdvancedColorOpen(false)}
