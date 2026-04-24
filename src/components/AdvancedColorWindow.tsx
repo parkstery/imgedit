@@ -103,11 +103,13 @@ function hsvToHex(h: number, s: number, v: number): string {
   return rgbToHex(r, g, b);
 }
 
-const SV_W = 220;
-const SV_H = 160;
+/** 이전 대비 창·패널 시각적 크기 약 60% */
+const SCALE = 0.6;
+const SV_W = Math.round(220 * SCALE);
+const SV_H = Math.round(160 * SCALE);
 
-const PANEL_EST_W = 340;
-const PANEL_EST_H = 460;
+const PANEL_EST_W = Math.round(352 * SCALE);
+const PANEL_EST_H = Math.round(480 * SCALE);
 
 function clampPanelPosition(x: number, y: number, w: number, h: number): { x: number; y: number } {
   const pad = 8;
@@ -136,6 +138,8 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
   const svCanvasRef = useRef<HTMLCanvasElement>(null);
   const svDraggingRef = useRef(false);
   const [eyedropperBusy, setEyedropperBusy] = useState(false);
+  /** 스포이드로 색을 집은 뒤 버튼을 다시 누르기 전까지 시각적 활성 */
+  const [eyedropperActive, setEyedropperActive] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const prevOpenRef = useRef(false);
   const dragRef = useRef<{ pointerId: number; ox: number; oy: number; px: number; py: number } | null>(null);
@@ -224,6 +228,10 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
   );
 
   useEffect(() => {
+    if (!isOpen) setEyedropperActive(false);
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -307,6 +315,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
           setV(hsv.v);
           setHexInput(hex);
           onColorChange(hex);
+          setEyedropperActive(true);
         }
       }
     } catch {
@@ -326,17 +335,17 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
       ref={panelRef}
       role="dialog"
       aria-labelledby="advanced-color-title"
-      className="fixed z-[90] w-[min(100vw-1rem,22rem)] rounded-xl border border-neutral-700 bg-neutral-800 shadow-2xl shadow-black/40"
+      className="fixed z-[90] w-[min(calc(100vw-1rem),13.2rem)] rounded-lg border border-neutral-700 bg-neutral-800 shadow-2xl shadow-black/40"
       style={{ left: position.x, top: position.y }}
     >
       <div
-        className="flex cursor-grab active:cursor-grabbing items-center justify-between gap-2 border-b border-neutral-700 px-3 py-2.5 select-none touch-none"
+        className="flex cursor-grab active:cursor-grabbing items-center justify-between gap-1.5 border-b border-neutral-700 px-2 py-1.5 select-none touch-none"
         onPointerDown={onHeaderPointerDown}
         onPointerMove={onHeaderPointerMove}
         onPointerUp={endHeaderDrag}
         onPointerCancel={endHeaderDrag}
       >
-        <h2 id="advanced-color-title" className="text-sm font-semibold text-neutral-100 truncate pr-2">
+        <h2 id="advanced-color-title" className="text-xs font-semibold text-neutral-100 truncate pr-1">
           고급 색상 선택
         </h2>
         <button
@@ -346,15 +355,15 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             onRequestClose();
           }}
           onPointerDown={e => e.stopPropagation()}
-          className="shrink-0 flex items-center gap-1 rounded-md border border-neutral-600 bg-neutral-900 px-2 py-1 text-xs font-medium text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          className="shrink-0 flex items-center gap-0.5 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-0.5 text-[10px] font-medium text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
         >
-          <X size={14} className="shrink-0 opacity-80" aria-hidden />
+          <X size={12} className="shrink-0 opacity-80" aria-hidden />
           닫기
         </button>
       </div>
 
-      <div className="p-4 space-y-4">
-        <div className="relative rounded-md overflow-hidden border border-neutral-600 touch-none">
+      <div className="p-2.5 space-y-2.5">
+        <div className="relative overflow-hidden rounded border border-neutral-600 touch-none">
           <canvas
             ref={svCanvasRef}
             width={SV_W}
@@ -377,13 +386,13 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             }}
           />
           <div
-            className="pointer-events-none absolute w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ring-1 ring-black/40"
+            className="pointer-events-none absolute w-2 h-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ring-1 ring-black/40"
             style={{ left: markerLeft, top: markerTop }}
           />
         </div>
 
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-neutral-400" htmlFor="adv-color-hue">
+        <div className="space-y-0.5">
+          <label className="text-[9px] font-medium text-neutral-400" htmlFor="adv-color-hue">
             색상(H)
           </label>
           <input
@@ -394,12 +403,12 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             step={1}
             value={Math.round(((h % 360) + 360) % 360)}
             onChange={e => applyHsv(parseInt(e.target.value, 10), s, v)}
-            className="w-full h-2 rounded-lg accent-blue-500 cursor-pointer"
+            className="w-full h-1.5 rounded-lg accent-blue-500 cursor-pointer"
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-[11px] text-neutral-400 shrink-0" htmlFor="adv-color-hex">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <label className="text-[9px] text-neutral-400 shrink-0" htmlFor="adv-color-hex">
             HEX
           </label>
           <input
@@ -429,36 +438,50 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
               }
             }}
             spellCheck={false}
-            className="flex-1 min-w-[7rem] rounded border border-neutral-600 bg-neutral-900 px-2 py-1.5 font-mono text-sm text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 min-w-[4.5rem] rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           {eyeDropperSupported ? (
             <button
               type="button"
               disabled={eyedropperBusy}
-              onClick={() => void runEyedropper()}
-              title="화면에서 색 추출 (창은 닫히지 않음)"
+              onClick={() => {
+                if (eyedropperActive) {
+                  setEyedropperActive(false);
+                  return;
+                }
+                void runEyedropper();
+              }}
+              title={
+                eyedropperActive
+                  ? '스포이드 활성 해제 (다시 누르면 화면에서 색 추출)'
+                  : '화면에서 색 추출. 색을 고른 뒤에는 버튼이 활성으로 남으며, 한 번 더 누르면 해제됩니다.'
+              }
+              aria-pressed={eyedropperActive}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-900 px-2.5 py-1.5 text-xs font-medium text-neutral-200',
-                'hover:bg-neutral-700 hover:border-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'inline-flex items-center gap-1 rounded border bg-neutral-900 px-1.5 py-1 text-[10px] font-medium',
+                'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                eyedropperActive
+                  ? 'border-blue-400 bg-blue-950/50 text-blue-100 ring-1 ring-blue-500/60'
+                  : 'border-neutral-600 text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500',
                 'disabled:opacity-50 disabled:pointer-events-none'
               )}
             >
-              <Pipette size={16} className="shrink-0" aria-hidden />
+              <Pipette size={12} className="shrink-0" aria-hidden />
               스포이드
             </button>
           ) : (
-            <span className="text-[10px] text-neutral-500">스포이드는 Chrome·Edge 등에서 지원됩니다.</span>
+            <span className="text-[9px] text-neutral-500">스포이드는 Chrome·Edge 등에서 지원됩니다.</span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <div
-            className="h-9 w-14 shrink-0 rounded border border-neutral-600 shadow-inner"
+            className="h-5 w-9 shrink-0 rounded border border-neutral-600 shadow-inner"
             style={{ backgroundColor: hsvToHex(h, s, v) }}
             title="미리보기"
           />
-          <p className="text-[11px] text-neutral-500 leading-snug">
-            제목 줄을 드래그해 위치를 옮길 수 있습니다. 스포이드 후에도 창은 유지되며, 닫기로만 닫습니다.
+          <p className="text-[9px] text-neutral-500 leading-snug">
+            제목 줄을 드래그해 이동합니다. 스포이드로 색을 고르면 버튼이 활성로 남고, 다시 누르면 해제됩니다.
           </p>
         </div>
       </div>
