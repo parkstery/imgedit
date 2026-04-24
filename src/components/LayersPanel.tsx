@@ -1,0 +1,142 @@
+import React from 'react';
+import { EditorState } from '../types';
+import { cn } from '../lib/utils';
+import { createEditorLayer } from '../lib/layers';
+import { Eye, EyeOff, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
+
+interface LayersPanelProps {
+  state: EditorState;
+  setState: React.Dispatch<React.SetStateAction<EditorState>>;
+}
+
+/** 위쪽이 전경(상단 레이어)처럼 보이도록 역순 표시 */
+export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => {
+  const ordered = [...state.layers].reverse();
+
+  const addLayer = () => {
+    setState(prev => {
+      const n = prev.layers.length + 1;
+      const L = createEditorLayer(`레이어 ${n}`);
+      return {
+        ...prev,
+        layers: [...prev.layers, L],
+        activeLayerId: L.id,
+        selectedShapeIds: [],
+      };
+    });
+  };
+
+  const deleteLayer = (layerId: string) => {
+    if (state.layers.length <= 1) return;
+    setState(prev => {
+      const idx = prev.layers.findIndex(l => l.id === layerId);
+      const next = prev.layers.filter(l => l.id !== layerId);
+      let aid = prev.activeLayerId;
+      if (aid === layerId) {
+        const fallback = next[Math.max(0, idx - 1)] ?? next[0];
+        aid = fallback.id;
+      }
+      return { ...prev, layers: next, activeLayerId: aid, selectedShapeIds: [] };
+    });
+  };
+
+  const toggleVisible = (layerId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setState(prev => ({
+      ...prev,
+      layers: prev.layers.map(l => (l.id === layerId ? { ...l, visible: !l.visible } : l)),
+    }));
+  };
+
+  const toggleLocked = (layerId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setState(prev => ({
+      ...prev,
+      layers: prev.layers.map(l => (l.id === layerId ? { ...l, locked: !l.locked } : l)),
+    }));
+  };
+
+  return (
+    <aside className="w-52 shrink-0 border-l border-neutral-800 bg-neutral-900/90 flex flex-col min-h-0">
+      <div className="px-2 py-2 border-b border-neutral-800 text-xs font-semibold text-neutral-300">
+        레이어
+      </div>
+      <div className="flex-1 overflow-y-auto p-1 space-y-0.5 min-h-0">
+        {ordered.map(layer => (
+          <div
+            key={layer.id}
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              setState(s => ({
+                ...s,
+                activeLayerId: layer.id,
+                selectedShapeIds: [],
+              }))
+            }
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setState(s => ({
+                  ...s,
+                  activeLayerId: layer.id,
+                  selectedShapeIds: [],
+                }));
+              }
+            }}
+            className={cn(
+              'w-full flex items-center gap-1 rounded px-1 py-1 text-left text-[11px] cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+              layer.id === state.activeLayerId
+                ? 'bg-blue-900/40 text-neutral-100 ring-1 ring-blue-500/40'
+                : 'text-neutral-300 hover:bg-neutral-800/80'
+            )}
+          >
+            <button
+              type="button"
+              className="p-0.5 shrink-0 rounded text-neutral-400 hover:text-neutral-200"
+              title={layer.visible ? '숨기기' : '표시'}
+              onClick={e => toggleVisible(layer.id, e)}
+            >
+              {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            <button
+              type="button"
+              className="p-0.5 shrink-0 rounded text-neutral-400 hover:text-neutral-200"
+              title={layer.locked ? '잠금 해제' : '잠금'}
+              onClick={e => toggleLocked(layer.id, e)}
+            >
+              {layer.locked ? <Lock size={13} /> : <LockOpen size={13} />}
+            </button>
+            <span className="flex-1 min-w-0 truncate" title={layer.name}>
+              {layer.name}
+            </span>
+            <span className="text-[10px] text-neutral-500 tabular-nums shrink-0">{layer.shapes.length}</span>
+          </div>
+        ))}
+      </div>
+      <div className="p-1.5 border-t border-neutral-800 flex gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={addLayer}
+          title="레이어 추가"
+          className="flex-1 flex items-center justify-center gap-1 rounded border border-neutral-700 bg-neutral-950 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+        >
+          <Plus size={14} />
+          추가
+        </button>
+        <button
+          type="button"
+          disabled={state.layers.length <= 1}
+          onClick={() => {
+            const cur = state.layers.find(l => l.id === state.activeLayerId);
+            if (cur) deleteLayer(cur.id);
+          }}
+          title="활성 레이어 삭제"
+          className="flex items-center justify-center rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-neutral-200 hover:bg-red-950/40 hover:border-red-800 disabled:opacity-30 disabled:hover:bg-neutral-950"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </aside>
+  );
+};

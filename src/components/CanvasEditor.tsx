@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
-import { EditorState, Point, Rect, Shape } from '../types';
+import { EditorState, Point, Rect, Shape, EditorLayer } from '../types';
 import { cn } from '../lib/utils';
 import { floodFillImageData, hexToRgba } from '../lib/floodFill';
 import {
@@ -10,8 +10,6 @@ import {
 } from '../lib/drawShapes';
 import {
   cloneShape,
-  getShapeBounds,
-  pickTopShape,
   translateShape,
   getOrientedHandles,
   hitTestHandle,
@@ -21,6 +19,16 @@ import {
   type ResizeHandleId,
   type PickedHandle,
 } from '../lib/shapeGeometry';
+import {
+  cloneLayersDeep,
+  findLayerIdForShapeId,
+  findShapeInLayers,
+  flattenVisibleShapesInOrder,
+  getActiveLayer,
+  mapLayersReplaceActiveShapes,
+  mapLayersUpdateShapeById,
+  pickTopShapeInLayers,
+} from '../lib/layers';
 
 interface CanvasEditorProps {
   state: EditorState;
@@ -28,8 +36,8 @@ interface CanvasEditorProps {
   onImageLoad: (file: File) => void;
   onPaste: () => void;
   onShapeCommitted?: (label?: string) => void;
-  /** 도형 배열이 (추가가 아닌) 변형/삭제될 때: 변경 전 배열을 snapshot 으로 Undo 스택에 쌓음 */
-  onShapesMutation?: (beforeShapes: Shape[], label?: string) => void;
+  /** 레이어·도형이 (추가가 아닌) 변형/삭제될 때: 변경 전 스냅샷을 Undo 스택에 쌓음 */
+  onLayersMutation?: (beforeLayers: EditorLayer[], beforeActiveLayerId: string, label?: string) => void;
   /** 페인트통 등 비트맵 변경 직전에 Undo용 스냅샷을 쌓을 때 호출 */
   onPrepareImageUndo?: () => void;
   /** 맞춤 등에서 뷰 스크롤을 맨 위·왼쪽으로 맞출 때 증가 */
@@ -42,7 +50,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onImageLoad,
   onPaste,
   onShapeCommitted,
-  onShapesMutation,
+  onLayersMutation,
   onPrepareImageUndo,
   scrollResetKey = 0,
 }) => {
@@ -82,7 +90,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     startImagePoint: Point;
     shapeIds: string[];
     initialById: Map<string, Shape>;
-    snapshotBefore: Shape[];
+    snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
   /** 리사이즈 드래그 중 상태. 단일 도형 기준. */
@@ -90,7 +98,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     shapeId: string;
     handle: ResizeHandleId;
     startShape: Shape;
-    snapshotBefore: Shape[];
+    snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
   /** 회전 드래그 중 상태. */
@@ -98,7 +106,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     shapeId: string;
     startShape: Shape;
     startPointer: Point;
-    snapshotBefore: Shape[];
+    snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
   /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
@@ -114,11 +122,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const getActiveHandles = useCallback(() => {
     if (state.selectedShapeIds.length !== 1) return null;
     const selId = state.selectedShapeIds[0];
-    const sh = state.shapes.find(s => s.id === selId);
+    const sh = findShapeInLayers(state.layers, selId);
     if (!sh) return null;
     const offset = ROTATION_HANDLE_OFFSET_PX / state.zoom;
     return { shape: sh, handles: getOrientedHandles(sh, offset) };
-  }, [state.selectedShapeIds, state.shapes, state.zoom]);
+  }, [state.selectedShapeIds, state.layers, state.zoom]);
 
   const commitPolylineDraft = useCallback(() => {
     setState(prev => {
@@ -141,7 +149,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         color: d.color,
         lineWidth: d.lineWidth,
       };
-      return { ...prev, shapes: [...prev.shapes, shape], polylineDraft: null };
+      const al = getActiveLayer(prev.layers, prev.activeLayerId);
+      if (!al || al.locked) return prev;
+      return {
+        ...prev,
+        layers: mapLayersReplaceActiveShapes(prev.layers, prev.activeLayerId, [...al.shapes, shape]),
+        polylineDraft: null,
+      };
     });
     setPolyHover(null);
     queueMicrotask(() => onShapeCommitted?.('폴리라인'));
@@ -164,7 +178,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         color: d.color,
         lineWidth: d.lineWidth,
       };
-      return { ...prev, shapes: [...prev.shapes, shape], freehandDraft: null };
+      const al = getActiveLayer(prev.layers, prev.activeLayerId);
+      if (!al || al.locked) return prev;
+      return {
+        ...prev,
+        layers: mapLayersReplaceActiveShapes(prev.layers, prev.activeLayerId, [...al.shapes, shape]),
+        freehandDraft: null,
+      };
     });
     queueMicrotask(() => onShapeCommitted?.('자유그리기'));
   }, [setState, onShapeCommitted]);
@@ -218,14 +238,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }
         if (e.key === 'Delete' || e.key === 'Backspace') {
           e.preventDefault();
-          const before = state.shapes;
+          const before = cloneLayersDeep(state.layers);
           const removing = new Set(state.selectedShapeIds);
           setState(prev => ({
             ...prev,
-            shapes: prev.shapes.filter(sh => !removing.has(sh.id)),
+            layers: prev.layers.map(layer => ({
+              ...layer,
+              shapes: layer.shapes.filter(sh => !removing.has(sh.id)),
+            })),
             selectedShapeIds: [],
           }));
-          onShapesMutation?.(before, '도형 삭제');
+          onLayersMutation?.(before, state.activeLayerId, '도형 삭제');
           return;
         }
         const arrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
@@ -235,20 +258,37 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           const step = e.shiftKey ? 10 : 1;
           const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
           const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-          const before = state.shapes;
+          const before = cloneLayersDeep(state.layers);
           const movingIds = new Set(state.selectedShapeIds);
           setState(prev => ({
             ...prev,
-            shapes: prev.shapes.map(sh => (movingIds.has(sh.id) ? translateShape(sh, dx, dy) : sh)),
+            layers: prev.layers.map(layer => ({
+              ...layer,
+              shapes: layer.shapes.map(sh =>
+                movingIds.has(sh.id) ? translateShape(sh, dx, dy) : sh
+              ),
+            })),
           }));
-          onShapesMutation?.(before, '도형 이동');
+          onLayersMutation?.(before, state.activeLayerId, '도형 이동');
           return;
         }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.tool, state.polylineDraft, state.freehandDraft, state.textDraft, state.selectedShapeIds, state.shapes, commitPolylineDraft, commitFreehandDraft, setState, onShapesMutation]);
+  }, [
+    state.tool,
+    state.polylineDraft,
+    state.freehandDraft,
+    state.textDraft,
+    state.selectedShapeIds,
+    state.layers,
+    state.activeLayerId,
+    commitPolylineDraft,
+    commitFreehandDraft,
+    setState,
+    onLayersMutation,
+  ]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -268,7 +308,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     ctx.drawImage(state.image, 0, 0);
 
-    state.shapes.forEach(shape => {
+    state.layers.forEach(layer => {
+      if (!layer.visible) return;
+      layer.shapes.forEach(shape => {
         if (shape.type === 'text') {
           fillTextShapeOnContext(ctx, shape);
           return;
@@ -304,6 +346,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }
         ctx.stroke();
         if (rotated) ctx.restore();
+      });
     });
 
     if (state.activeShape) {
@@ -394,7 +437,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ctx.strokeStyle = '#22d3ee';
       ctx.lineWidth = 1.5 / state.zoom;
       ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
-      state.shapes.forEach(sh => {
+      state.layers.forEach(layer => {
+        layer.shapes.forEach(sh => {
         if (!selectedSet.has(sh.id)) return;
         const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
         const h = getOrientedHandles(sh, hOff);
@@ -407,11 +451,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         ctx.lineTo(p3.x, p3.y);
         ctx.closePath();
         ctx.stroke();
+        });
       });
       ctx.setLineDash([]);
 
       if (isSingle) {
-        const sh = state.shapes.find(s => s.id === state.selectedShapeIds[0]);
+        const sh = findShapeInLayers(state.layers, state.selectedShapeIds[0]);
         if (sh) {
           const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
           const h = getOrientedHandles(sh, hOff);
@@ -525,6 +570,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handlePolylineClick = (e: React.MouseEvent) => {
     if (state.tool !== 'polyline' || !state.image) return;
+    const al0 = getActiveLayer(state.layers, state.activeLayerId);
+    if (al0?.locked) return;
     const imgPos = toImageCoords(getMousePos(e));
     setState(prev => {
       if (prev.tool !== 'polyline') return prev;
@@ -551,6 +598,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleFreehandClick = (e: React.MouseEvent) => {
     if (state.tool !== 'freehand' || !state.image) return;
+    const al0 = getActiveLayer(state.layers, state.activeLayerId);
+    if (al0?.locked) return;
     const imgPos = toImageCoords(getMousePos(e));
     setState(prev => {
       if (prev.tool !== 'freehand') return prev;
@@ -582,8 +631,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         color: draft.color,
         lineWidth: draft.lineWidth,
       };
+      const al = getActiveLayer(prev.layers, prev.activeLayerId);
+      if (!al || al.locked) return { ...prev, freehandDraft: null };
       queueMicrotask(() => onShapeCommitted?.('자유그리기'));
-      return { ...prev, shapes: [...prev.shapes, shape], freehandDraft: null };
+      return {
+        ...prev,
+        layers: mapLayersReplaceActiveShapes(prev.layers, prev.activeLayerId, [...al.shapes, shape]),
+        freehandDraft: null,
+      };
     });
   };
 
@@ -592,7 +647,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const imgPos = toImageCoords(getMousePos(e));
     const ix = Math.floor(imgPos.x);
     const iy = Math.floor(imgPos.y);
-    const { image: img, shapes, color: fillHex } = state;
+    const { image: img, color: fillHex } = state;
+    const shapes = flattenVisibleShapesInOrder(state.layers);
 
     if (ix < 0 || iy < 0 || ix >= img.width || iy >= img.height) return;
 
@@ -635,7 +691,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       setState(prev => ({
         ...prev,
         image: nextImg,
-        shapes: [],
+        layers: prev.layers.map(l => ({ ...l, shapes: [] })),
         activeShape: null,
         selection: null,
         polylineDraft: null,
@@ -673,7 +729,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   shapeId: active.shape.id,
                   startShape: cloneShape(active.shape),
                   startPointer: imgPos,
-                  snapshotBefore: state.shapes.map(cloneShape),
+                  snapshotBefore: cloneLayersDeep(state.layers),
                   hasMoved: false,
                 };
               } else {
@@ -681,7 +737,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   shapeId: active.shape.id,
                   handle: picked.id as ResizeHandleId,
                   startShape: cloneShape(active.shape),
-                  snapshotBefore: state.shapes.map(cloneShape),
+                  snapshotBefore: cloneLayersDeep(state.layers),
                   hasMoved: false,
                 };
               }
@@ -691,24 +747,28 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           }
         }
         const tol = 6 / state.zoom;
-        const hit = pickTopShape(state.shapes, imgPos, tol);
+        const hit = pickTopShapeInLayers(state.layers, imgPos, tol);
         if (hit) {
+          const layerIdForHit = findLayerIdForShapeId(state.layers, hit.id);
           const ids = state.selectedShapeIds.includes(hit.id) && state.selectedShapeIds.length > 0
             ? state.selectedShapeIds
             : [hit.id];
           const initialById = new Map<string, Shape>();
-          state.shapes.forEach(sh => {
-            if (ids.includes(sh.id)) initialById.set(sh.id, cloneShape(sh));
+          state.layers.forEach(layer => {
+            layer.shapes.forEach(sh => {
+              if (ids.includes(sh.id)) initialById.set(sh.id, cloneShape(sh));
+            });
           });
           moveStateRef.current = {
             startImagePoint: imgPos,
             shapeIds: ids,
             initialById,
-            snapshotBefore: state.shapes.map(cloneShape),
+            snapshotBefore: cloneLayersDeep(state.layers),
             hasMoved: false,
           };
           setState(prev => ({
             ...prev,
+            activeLayerId: layerIdForHit ?? prev.activeLayerId,
             selectedShapeIds: ids,
             selection: null,
             isSelecting: false,
@@ -717,6 +777,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           setState(prev => ({ ...prev, isSelecting: true, selection: null, selectedShapeIds: [] }));
         }
       } else if (state.tool === 'text' && state.image) {
+        const al = getActiveLayer(state.layers, state.activeLayerId);
+        if (al?.locked) return;
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
@@ -735,6 +797,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'fill' &&
         state.tool !== 'text'
       ) {
+        const al = getActiveLayer(state.layers, state.activeLayerId);
+        if (al?.locked) return;
         const imgPos = toImageCoords(pos);
         setState(prev => ({
           ...prev,
@@ -766,7 +830,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       st.hasMoved = true;
       setState(prev => ({
         ...prev,
-        shapes: prev.shapes.map(sh => (sh.id === st.shapeId ? updated : sh)),
+        layers: mapLayersUpdateShapeById(prev.layers, st.shapeId, updated),
       }));
       return;
     }
@@ -778,7 +842,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       st.hasMoved = true;
       setState(prev => ({
         ...prev,
-        shapes: prev.shapes.map(sh => (sh.id === st.shapeId ? updated : sh)),
+        layers: mapLayersUpdateShapeById(prev.layers, st.shapeId, updated),
       }));
       return;
     }
@@ -791,10 +855,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       if (dx !== 0 || dy !== 0) moveStateRef.current.hasMoved = true;
       setState(prev => ({
         ...prev,
-        shapes: prev.shapes.map(sh => {
-          const init = initialById.get(sh.id);
-          return init ? translateShape(init, dx, dy) : sh;
-        }),
+        layers: prev.layers.map(layer => ({
+          ...layer,
+          shapes: layer.shapes.map(sh => {
+            const init = initialById.get(sh.id);
+            return init ? translateShape(init, dx, dy) : sh;
+          }),
+        })),
       }));
       return;
     }
@@ -823,7 +890,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       } else {
         if (hoverHandle) setHoverHandle(null);
         const tol = 6 / state.zoom;
-        const hit = pickTopShape(state.shapes, imgPos, tol);
+        const hit = pickTopShapeInLayers(state.layers, imgPos, tol);
         if (!!hit !== hoveringShape) setHoveringShape(!!hit);
       }
     } else {
@@ -895,7 +962,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (resizeStateRef.current) {
       const { snapshotBefore, hasMoved } = resizeStateRef.current;
       resizeStateRef.current = null;
-      if (hasMoved) onShapesMutation?.(snapshotBefore, '도형 크기조절');
+      if (hasMoved) onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 크기조절');
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
@@ -903,7 +970,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (rotateStateRef.current) {
       const { snapshotBefore, hasMoved } = rotateStateRef.current;
       rotateStateRef.current = null;
-      if (hasMoved) onShapesMutation?.(snapshotBefore, '도형 회전');
+      if (hasMoved) onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 회전');
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
@@ -912,7 +979,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const { snapshotBefore, hasMoved } = moveStateRef.current;
       moveStateRef.current = null;
       if (hasMoved) {
-        onShapesMutation?.(snapshotBefore, '도형 이동');
+        onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 이동');
       }
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
@@ -925,11 +992,18 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         return;
       }
       shapeEndGuardRef.current = true;
-      setState(prev => ({
-        ...prev,
-        shapes: [...prev.shapes, prev.activeShape!],
-        activeShape: null,
-      }));
+      setState(prev => {
+        const al = getActiveLayer(prev.layers, prev.activeLayerId);
+        if (!al || al.locked) return { ...prev, activeShape: null };
+        return {
+          ...prev,
+          layers: mapLayersReplaceActiveShapes(prev.layers, prev.activeLayerId, [
+            ...al.shapes,
+            prev.activeShape!,
+          ]),
+          activeShape: null,
+        };
+      });
       onShapeCommitted?.(getShapeCommitLabel(state.tool));
       queueMicrotask(() => {
         shapeEndGuardRef.current = false;
@@ -1029,11 +1103,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         if (state.tool !== 'select') return undefined;
         if (rotateStateRef.current) return { cursor: 'grabbing' } as React.CSSProperties;
         if (resizeStateRef.current) {
-          const sh = state.shapes.find(s => s.id === resizeStateRef.current!.shapeId);
+          const sh = findShapeInLayers(state.layers, resizeStateRef.current!.shapeId);
           return { cursor: cursorForHandle(resizeStateRef.current.handle, sh?.rotation ?? 0) } as React.CSSProperties;
         }
         if (hoverHandle) {
-          const sh = state.shapes.find(s => s.id === state.selectedShapeIds[0]);
+          const sh = findShapeInLayers(state.layers, state.selectedShapeIds[0]);
           const r = sh?.rotation ?? 0;
           if (hoverHandle.kind === 'rotation') return { cursor: 'grab' } as React.CSSProperties;
           return { cursor: cursorForHandle(hoverHandle.id as ResizeHandleId, r) } as React.CSSProperties;

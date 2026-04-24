@@ -3,11 +3,20 @@ import { Toolbar } from './components/Toolbar';
 import { CanvasEditor } from './components/CanvasEditor';
 import { StatusBar } from './components/StatusBar';
 import { TextDraftPanel } from './components/TextDraftPanel';
+import { LayersPanel } from './components/LayersPanel';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
-import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry, Shape } from './types';
+import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry, Shape, EditorLayer } from './types';
 import { renderShapesOnContext, measureTextShapeBounds } from './lib/drawShapes';
+import {
+  cloneLayersDeep,
+  createEditorLayer,
+  flattenVisibleShapesInOrder,
+  getActiveLayer,
+  mapLayersReplaceActiveShapes,
+  totalShapeCount,
+} from './lib/layers';
 import {
   readFillTolerance,
   readFillIgnoreAlpha,
@@ -41,7 +50,7 @@ function imageToDataUrlSafe(image: HTMLImageElement): string | undefined {
   }
 }
 
-const INITIAL_STATE: EditorState = {
+const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   zoom: 1,
   position: { x: 0, y: 0 },
   selection: null,
@@ -55,13 +64,17 @@ const INITIAL_STATE: EditorState = {
   textFontSize: 24,
   fillTolerance: 40,
   fillIgnoreAlpha: false,
-  shapes: [],
   activeShape: null,
   selectedShapeIds: [],
   polylineDraft: null,
   freehandDraft: null,
   textDraft: null,
 };
+
+function createFreshEditorState(): EditorState {
+  const L = createEditorLayer('레이어 1');
+  return { ...INITIAL_STATE_BASE, layers: [L], activeLayerId: L.id };
+}
 
 function cloneShapeDeep(shape: Shape): Shape {
   return {
@@ -72,14 +85,14 @@ function cloneShapeDeep(shape: Shape): Shape {
 
 function loadFillToolPrefsFromStorage(): Pick<EditorState, 'fillTolerance' | 'fillIgnoreAlpha'> {
   return {
-    fillTolerance: readFillTolerance(INITIAL_STATE.fillTolerance),
-    fillIgnoreAlpha: readFillIgnoreAlpha(INITIAL_STATE.fillIgnoreAlpha),
+    fillTolerance: readFillTolerance(INITIAL_STATE_BASE.fillTolerance),
+    fillIgnoreAlpha: readFillIgnoreAlpha(INITIAL_STATE_BASE.fillIgnoreAlpha),
   };
 }
 
 export default function App() {
   const [state, setState] = useState<EditorState>(() => ({
-    ...INITIAL_STATE,
+    ...createFreshEditorState(),
     ...loadFillToolPrefsFromStorage(),
   }));
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
@@ -107,11 +120,15 @@ export default function App() {
       const img = new Image();
       img.onload = () => {
         setState(prev => ({
-          ...prev,
+          ...createFreshEditorState(),
+          ...loadFillToolPrefsFromStorage(),
+          fillTolerance: prev.fillTolerance,
+          fillIgnoreAlpha: prev.fillIgnoreAlpha,
+          textFontSize: prev.textFontSize,
           image: img,
           fileName: 'new-image.png',
           position: { x: 50, y: 50 },
-          zoom: 0.8
+          zoom: 0.8,
         }));
       };
       img.src = canvas.toDataURL();
@@ -149,7 +166,8 @@ export default function App() {
   const applyImageSnapshot = useCallback((snap: ImageUndoSnapshot) => {
     const nextMeta = {
       fileName: snap.fileName,
-      shapes: snap.shapes.map(sh => ({ ...sh })),
+      layers: cloneLayersDeep(snap.layers),
+      activeLayerId: snap.activeLayerId,
       selection: snap.selection ? { ...snap.selection } : null,
       zoom: snap.zoom,
       position: { ...snap.position },
@@ -181,7 +199,8 @@ export default function App() {
       ...(imageDataUrl ? { imageDataUrl } : {}),
       imageElement: source.image,
       fileName: source.fileName,
-      shapes: source.shapes.map(sh => ({ ...sh })),
+      layers: cloneLayersDeep(source.layers),
+      activeLayerId: source.activeLayerId,
       selection: source.selection ? { ...source.selection } : null,
       zoom: source.zoom,
       position: { ...source.position },
@@ -193,10 +212,11 @@ export default function App() {
     if (snap) appendUndoEntry({ type: 'image', snapshot: snap, label: '페인트통 채우기' });
   }, [buildStateSnapshot, appendUndoEntry]);
 
-  const handleShapesMutation = useCallback((beforeShapes: Shape[], label?: string) => {
+  const handleLayersMutation = useCallback((beforeLayers: EditorLayer[], beforeActiveLayerId: string, label?: string) => {
     appendUndoEntry({
-      type: 'shapesSnapshot',
-      beforeShapes: beforeShapes.map(cloneShapeDeep),
+      type: 'layersSnapshot',
+      beforeLayers: cloneLayersDeep(beforeLayers),
+      beforeActiveLayerId,
       label,
     });
   }, [appendUndoEntry]);
@@ -212,15 +232,14 @@ export default function App() {
         setUndoStack([]);
         setRedoStack([]);
         setState(prev => ({
-          ...INITIAL_STATE,
+          ...createFreshEditorState(),
           fillTolerance: prev.fillTolerance,
           fillIgnoreAlpha: prev.fillIgnoreAlpha,
           textFontSize: prev.textFontSize,
           image: img,
           fileName: file.name,
-          // Center image initially
           position: { x: 50, y: 50 },
-          zoom: 0.8
+          zoom: 0.8,
         }));
       };
       img.src = e.target?.result as string;
@@ -254,7 +273,7 @@ export default function App() {
     }
 
     ctx.drawImage(state.image, 0, 0);
-    renderShapesOnContext(ctx, state.shapes);
+    renderShapesOnContext(ctx, flattenVisibleShapesInOrder(state.layers));
     
     const extension = format.split('/')[1];
     const finalFilename = filename || `edited-${state.fileName?.split('.')[0] || 'image'}.${extension}`;
@@ -321,10 +340,15 @@ export default function App() {
     const prevStack = undoStackRef.current;
     if (prevStack.length === 0) {
       setState(s => {
-        if (s.shapes.length === 0) return s;
-        return { ...s, shapes: s.shapes.slice(0, -1) };
+        const al = getActiveLayer(s.layers, s.activeLayerId);
+        if (!al || al.shapes.length === 0) return s;
+        return {
+          ...s,
+          layers: mapLayersReplaceActiveShapes(s.layers, s.activeLayerId, al.shapes.slice(0, -1)),
+          selectedShapeIds: [],
+        };
       });
-      if (undoPoint && stateRef.current.shapes.length > 0) {
+      if (undoPoint && totalShapeCount(stateRef.current.layers) > 0) {
         const nextRedo = [...redoStackRef.current, undoPoint];
         redoStackRef.current = nextRedo;
         setRedoStack(nextRedo);
@@ -336,15 +360,25 @@ export default function App() {
     undoStackRef.current = nextStack;
     setUndoStack(nextStack);
     if (last.type === 'shape') {
-      setState(s => ({ ...s, shapes: s.shapes.slice(0, -1), selectedShapeIds: [] }));
+      setState(s => ({
+        ...s,
+        layers: s.layers.map(l =>
+          l.id !== last.layerId ? l : { ...l, shapes: l.shapes.slice(0, -1) }
+        ),
+        selectedShapeIds: [],
+      }));
     } else if (last.type === 'image' || last.type === 'imageMerge') {
       if (pasteUndoRef.current.length > 0) {
         pasteUndoRef.current = pasteUndoRef.current.slice(0, -1);
       }
       applyImageSnapshot(last.snapshot);
-    } else if (last.type === 'shapesSnapshot') {
-      const restored = last.beforeShapes.map(cloneShapeDeep);
-      setState(s => ({ ...s, shapes: restored, selectedShapeIds: [] }));
+    } else if (last.type === 'layersSnapshot') {
+      setState(s => ({
+        ...s,
+        layers: cloneLayersDeep(last.beforeLayers),
+        activeLayerId: last.beforeActiveLayerId,
+        selectedShapeIds: [],
+      }));
     }
     if (undoPoint) {
       const nextRedo = [...redoStackRef.current, undoPoint];
@@ -375,7 +409,11 @@ export default function App() {
     undoStackRef.current = next;
     setUndoStack(next);
     clearRedoStack();
-    setState(prev => ({ ...prev, shapes: [], selectedShapeIds: [] }));
+    setState(prev => ({
+      ...prev,
+      layers: prev.layers.map(l => ({ ...l, shapes: [] })),
+      selectedShapeIds: [],
+    }));
   };
 
   const handleResize = (newWidth: number, newHeight: number) => {
@@ -410,11 +448,10 @@ export default function App() {
     // Stretch image to new dimensions as requested
     ctx.drawImage(state.image, 0, 0, newWidth, newHeight);
     
-    // Scale shapes to match new dimensions
     const scaleX = newWidth / currentWidth;
     const scaleY = newHeight / currentHeight;
-    
-    const scaledShapes = state.shapes.map((shape: Shape) => {
+
+    const scaleShape = (shape: Shape): Shape => {
       if (shape.type === 'text' && shape.text != null && shape.fontSize != null) {
         return {
           ...shape,
@@ -441,15 +478,20 @@ export default function App() {
         };
       }
       return base;
-    });
+    };
+
+    const scaledLayers = state.layers.map(layer => ({
+      ...layer,
+      shapes: layer.shapes.map(scaleShape),
+    }));
 
     const newImg = new Image();
     newImg.onload = () => {
-      setState(prev => ({ 
-        ...prev, 
-        image: newImg, 
-        selection: null, 
-        shapes: scaledShapes 
+      setState(prev => ({
+        ...prev,
+        image: newImg,
+        selection: null,
+        layers: scaledLayers,
       }));
       setIsCanvasSizeModalOpen(false);
     };
@@ -471,8 +513,8 @@ export default function App() {
       0, 0, rect.width, rect.height
     );
 
-    // Draw shapes that intersect with the selection (텍스트는 바운딩으로 판별)
-    state.shapes.forEach(shape => {
+    const flat = flattenVisibleShapesInOrder(state.layers);
+    flat.forEach(shape => {
       if (shape.type === 'polyline') {
         if (!rectsOverlap(rect, shapeToBoundsRect(shape))) return;
       }
@@ -487,7 +529,7 @@ export default function App() {
     });
 
     return canvas;
-  }, [state.image, state.shapes]);
+  }, [state.image, state.layers]);
 
   const handleCopy = useCallback(async () => {
     if (!state.selection || !state.image) return;
@@ -549,7 +591,8 @@ export default function App() {
         ...(imageDataUrl ? { imageDataUrl } : {}),
         imageElement: s.image,
         fileName: s.fileName,
-        shapes: s.shapes.map(sh => ({ ...sh })),
+        layers: cloneLayersDeep(s.layers),
+        activeLayerId: s.activeLayerId,
         selection: s.selection ? { ...s.selection } : null,
         zoom: s.zoom,
         position: { ...s.position },
@@ -563,15 +606,19 @@ export default function App() {
         appendUndoEntry({ type: 'image', snapshot, label: '붙여넣기 (새 이미지)' });
         pushPasteUndoSnapshot(snapshot);
       }
-      setState(prev => ({
-        ...prev,
-        image: img,
-        fileName: 'pasted-image.png',
-        zoom: 1,
-        position: { x: 50, y: 50 },
-        shapes: [],
-        selection: null
-      }));
+      setState(prev => {
+        const fresh = createFreshEditorState();
+        return {
+          ...prev,
+          image: img,
+          fileName: 'pasted-image.png',
+          zoom: 1,
+          position: { x: 50, y: 50 },
+          layers: fresh.layers,
+          activeLayerId: fresh.activeLayerId,
+          selection: null,
+        };
+      });
     } else {
       const canvas = document.createElement('canvas');
       canvas.width = s.image.width;
@@ -774,7 +821,7 @@ export default function App() {
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}
-        canUndoLast={undoStack.length > 0 || state.shapes.length > 0}
+        canUndoLast={undoStack.length > 0 || totalShapeCount(state.layers) > 0}
         canRedoLast={redoStack.length > 0}
         onClearShapes={handleClearShapes}
         onCopy={handleCopy}
@@ -788,11 +835,14 @@ export default function App() {
           setState={setState}
           onImageLoad={handleImageLoad}
           onPaste={() => handlePaste()}
-          onShapeCommitted={(label) => appendUndoEntry({ type: 'shape', label })}
-          onShapesMutation={handleShapesMutation}
+          onShapeCommitted={(label) =>
+            appendUndoEntry({ type: 'shape', layerId: stateRef.current.activeLayerId, label })
+          }
+          onLayersMutation={handleLayersMutation}
           onPrepareImageUndo={handlePrepareImageUndoForPaint}
           scrollResetKey={canvasScrollResetKey}
         />
+        <LayersPanel state={state} setState={setState} />
       </main>
 
       <SaveModal 

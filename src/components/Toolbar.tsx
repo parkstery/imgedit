@@ -25,6 +25,7 @@ import {
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
 import { AdvancedColorWindow } from './AdvancedColorWindow';
+import { totalShapeCount } from '../lib/layers';
 
 /** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
 const PAINT_PALETTE = [
@@ -312,7 +313,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={onClearShapes} 
             icon={<Trash2 size={18} />} 
             label="모든 도형 삭제" 
-            disabled={state.shapes.length === 0}
+            disabled={totalShapeCount(state.layers) === 0}
           />
         </div>
       </div>

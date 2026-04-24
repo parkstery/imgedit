@@ -1,5 +1,6 @@
 import React, { useCallback, useLayoutEffect, useRef } from 'react';
 import { EditorState, Shape } from '../types';
+import { getActiveLayer, mapLayersReplaceActiveShapes } from '../lib/layers';
 import { CANVAS_TEXT_FONT_STACK } from '../lib/drawShapes';
 
 interface TextDraftPanelProps {
@@ -32,9 +33,11 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
         text: draft.text.trim(),
         fontSize: draft.fontSize,
       };
+      const al = getActiveLayer(prev.layers, prev.activeLayerId);
+      if (!al || al.locked) return { ...prev, textDraft: null };
       return {
         ...prev,
-        shapes: [...prev.shapes, shape],
+        layers: mapLayersReplaceActiveShapes(prev.layers, prev.activeLayerId, [...al.shapes, shape]),
         textDraft: null,
       };
     });

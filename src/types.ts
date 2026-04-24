@@ -36,6 +36,16 @@ export interface TextDraft {
   fontSize: number;
 }
 
+/** 벡터 도형이 모이는 레이어(아래에서 위로 쌓임) */
+export interface EditorLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  /** true면 선택·이동·그리기 등 편집 불가(표시만) */
+  locked: boolean;
+  shapes: Shape[];
+}
+
 export interface Shape {
   id: string;
   type: 'line' | 'rect' | 'ellipse' | 'polyline' | 'text';
@@ -71,7 +81,9 @@ export interface EditorState {
   fillTolerance: number;
   /** true면 채우기 영역 판별 시 RGB만 비교하고 알파는 무시 */
   fillIgnoreAlpha: boolean;
-  shapes: Shape[];
+  /** 아래→위 순서. 새 도형은 activeLayerId 레이어에 추가 */
+  layers: EditorLayer[];
+  activeLayerId: string;
   activeShape: Shape | null;
   /** 선택된 벡터 도형 id들. 영역 selection(Rect)과는 개념이 다름. */
   selectedShapeIds: string[];
@@ -89,7 +101,8 @@ export interface ImageUndoSnapshot {
   /** toDataURL 불가(tainted 캔버스)여도 붙여넣기 직전 비트맵을 참조로 보존 */
   imageElement?: HTMLImageElement | null;
   fileName: string | null;
-  shapes: Shape[];
+  layers: EditorLayer[];
+  activeLayerId: string;
   selection: Rect | null;
   zoom: number;
   position: Point;
@@ -97,8 +110,8 @@ export interface ImageUndoSnapshot {
 
 /** image: 캔버스 전체 교체(새로 붙여넣기 등), imageMerge: 기존 이미지 위에 합성(부분 붙여넣기) */
 export type UndoEntry =
-  | { type: 'shape'; label?: string }
+  | { type: 'shape'; layerId: string; label?: string }
   | { type: 'image'; snapshot: ImageUndoSnapshot; label?: string }
   | { type: 'imageMerge'; snapshot: ImageUndoSnapshot; label?: string }
-  /** 벡터 도형 배열 변경(이동/삭제/넛지). beforeShapes 로 되돌림. */
-  | { type: 'shapesSnapshot'; beforeShapes: Shape[]; label?: string };
+  /** 레이어·도형 일괄 변경 전 스냅샷 */
+  | { type: 'layersSnapshot'; beforeLayers: EditorLayer[]; beforeActiveLayerId: string; label?: string };
