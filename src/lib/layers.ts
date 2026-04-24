@@ -135,6 +135,18 @@ export function mapLayersFlattenRasterToActive(
   );
 }
 
+/** 활성 레이어의 래스터만 교체(도형·다른 레이어는 그대로). 클립보드 붙여넣기 등에 사용. */
+export function mapLayersReplaceActiveLayerRaster(
+  layers: readonly EditorLayer[],
+  activeLayerId: string,
+  image: HTMLImageElement,
+  fileName: string | null,
+): EditorLayer[] {
+  return layers.map(l =>
+    l.id === activeLayerId ? { ...l, image, fileName: fileName ?? l.fileName } : l
+  );
+}
+
 /** 도형 id가 속한 레이어 id (없으면 undefined) */
 export function findLayerIdForShapeId(
   layers: readonly EditorLayer[],

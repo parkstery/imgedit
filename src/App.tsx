@@ -16,6 +16,7 @@ import {
   getActiveLayer,
   getDocumentCanvasSize,
   mapLayersFlattenRasterToActive,
+  mapLayersReplaceActiveLayerRaster,
   mapLayersReplaceActiveShapes,
   totalShapeCount,
 } from './lib/layers';
@@ -611,13 +612,17 @@ export default function App() {
       });
     } else {
       const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
+      const activeLayer = getActiveLayer(s.layers, s.activeLayerId);
       const canvas = document.createElement('canvas');
       canvas.width = dw;
       canvas.height = dh;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      drawLayerStackToContext(ctx, s.layers, dw, dh);
+      /** 활성 레이어 래스터만 깔고 그 위에 붙여넣기(다른 레이어 래스터는 합성하지 않음). */
+      if (activeLayer?.image) {
+        ctx.drawImage(activeLayer.image, 0, 0);
+      }
 
       if (s.selection) {
         ctx.drawImage(
@@ -647,11 +652,11 @@ export default function App() {
         pushPasteUndoSnapshot(snapshot);
         setState(prev => ({
           ...prev,
-          layers: mapLayersFlattenRasterToActive(
+          layers: mapLayersReplaceActiveLayerRaster(
             prev.layers,
             prev.activeLayerId,
             mergedImg,
-            getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+            activeLayer?.fileName ?? 'pasted-image.png'
           ),
           selection: null,
         }));
