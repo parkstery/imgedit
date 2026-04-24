@@ -354,6 +354,9 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
 
   if (!isOpen) return null;
 
+  const { r: rgbR, g: rgbG, b: rgbB } = hsvToRgb(h, s, v);
+  const rgbCode = `rgb(${Math.round(rgbR)}, ${Math.round(rgbG)}, ${Math.round(rgbB)})`;
+
   const panel = (
     <div
       ref={panelRef}
@@ -498,9 +501,12 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             style={{ backgroundColor: hsvToHex(h, s, v) }}
             title="미리보기"
           />
-          <p className="text-[9px] text-neutral-500 leading-snug">
-            제목 줄을 드래그해 이동합니다. 스포이드로 색을 고른 뒤에도 버튼은 활성으로 유지되며, 여러 번 눌러 색을 이어서 고를 수 있습니다.
-          </p>
+          <div className="min-w-0 flex-1">
+            <span className="text-[9px] font-medium text-neutral-400">RGB</span>
+            <p className="font-mono text-[11px] text-neutral-200 tabular-nums leading-snug truncate" title={rgbCode}>
+              {rgbCode}
+            </p>
+          </div>
         </div>
       </div>
     </div>
