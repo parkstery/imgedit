@@ -444,18 +444,8 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             <button
               type="button"
               disabled={eyedropperBusy}
-              onClick={() => {
-                if (eyedropperActive) {
-                  setEyedropperActive(false);
-                  return;
-                }
-                void runEyedropper();
-              }}
-              title={
-                eyedropperActive
-                  ? '스포이드 활성 해제 (다시 누르면 화면에서 색 추출)'
-                  : '화면에서 색 추출. 색을 고른 뒤에는 버튼이 활성으로 남으며, 한 번 더 누르면 해제됩니다.'
-              }
+              onClick={() => void runEyedropper()}
+              title="화면에서 색 추출. 색을 고른 뒤에도 버튼은 활성으로 유지되며, 누를 때마다 다시 스포이드를 사용할 수 있습니다."
               aria-pressed={eyedropperActive}
               className={cn(
                 'inline-flex items-center gap-1 rounded border bg-neutral-900 px-1.5 py-1 text-[10px] font-medium',
@@ -481,7 +471,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             title="미리보기"
           />
           <p className="text-[9px] text-neutral-500 leading-snug">
-            제목 줄을 드래그해 이동합니다. 스포이드로 색을 고르면 버튼이 활성로 남고, 다시 누르면 해제됩니다.
+            제목 줄을 드래그해 이동합니다. 스포이드로 색을 고른 뒤에도 버튼은 활성으로 유지되며, 여러 번 눌러 색을 이어서 고를 수 있습니다.
           </p>
         </div>
       </div>
