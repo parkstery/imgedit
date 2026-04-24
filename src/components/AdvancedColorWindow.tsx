@@ -105,11 +105,11 @@ function hsvToHex(h: number, s: number, v: number): string {
 
 /** 이전 대비 창·패널 시각적 크기 약 60% */
 const SCALE = 0.6;
-const SV_W = Math.round(220 * SCALE);
-const SV_H = Math.round(160 * SCALE);
+/** 원형 색환(중앙 흰색·외곽 풀채도) 직경(px) */
+const WHEEL_DIAM = Math.round(200 * SCALE);
 
 const PANEL_EST_W = Math.round(352 * SCALE);
-const PANEL_EST_H = Math.round(480 * SCALE);
+const PANEL_EST_H = Math.round(420 * SCALE);
 
 function clampPanelPosition(x: number, y: number, w: number, h: number): { x: number; y: number } {
   const pad = 8;
@@ -135,8 +135,8 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
   const [position, setPosition] = useState({ x: 16, y: 72 });
   const positionRef = useRef(position);
   positionRef.current = position;
-  const svCanvasRef = useRef<HTMLCanvasElement>(null);
-  const svDraggingRef = useRef(false);
+  const wheelCanvasRef = useRef<HTMLCanvasElement>(null);
+  const wheelDraggingRef = useRef(false);
   const [eyedropperBusy, setEyedropperBusy] = useState(false);
   /** 스포이드로 색을 집은 뒤 버튼을 다시 누르기 전까지 시각적 활성 */
   const [eyedropperActive, setEyedropperActive] = useState(false);
@@ -159,28 +159,42 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
     [onColorChange]
   );
 
-  const redrawSvCanvas = useCallback((hueOverride?: number) => {
-    const canvas = svCanvasRef.current;
+  /** 원형 H–S 휠(중심 s=0 흰색, 가장자리 s=1·v=1). 휠 모양은 고정이라 한 번만 그립니다. */
+  const drawWheelCanvas = useCallback(() => {
+    const canvas = wheelCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const hh = (((hueOverride ?? h) % 360) + 360) % 360;
-    const img = ctx.createImageData(SV_W, SV_H);
-    const d = img.data;
-    for (let py = 0; py < SV_H; py++) {
-      const vv = 1 - py / (SV_H - 1 || 1);
-      for (let px = 0; px < SV_W; px++) {
-        const ss = px / (SV_W - 1 || 1);
-        const { r, g, b } = hsvToRgb(hh, ss, vv);
-        const i = (py * SV_W + px) * 4;
-        d[i] = r;
-        d[i + 1] = g;
-        d[i + 2] = b;
-        d[i + 3] = 255;
+    const d = WHEEL_DIAM;
+    const cx = (d - 1) / 2;
+    const cy = (d - 1) / 2;
+    const R = Math.max(1, Math.min(cx, cy) - 0.5);
+    const img = ctx.createImageData(d, d);
+    const data = img.data;
+    for (let py = 0; py < d; py++) {
+      for (let px = 0; px < d; px++) {
+        const dx = px - cx;
+        const dy = py - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const i = (py * d + px) * 4;
+        if (dist > R) {
+          data[i] = 0;
+          data[i + 1] = 0;
+          data[i + 2] = 0;
+          data[i + 3] = 0;
+          continue;
+        }
+        const hue = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+        const sat = Math.min(1, dist / R);
+        const { r, g, b } = hsvToRgb(hue, sat, 1);
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
       }
     }
     ctx.putImageData(img, 0, 0);
-  }, [h]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!isOpen) {
@@ -206,25 +220,36 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
         setS(hsv.s);
         setV(hsv.v);
         setHexInput(normalizeHex(color) ?? hsvToHex(hsv.h, hsv.s, hsv.v));
-        redrawSvCanvas(hsv.h);
+        queueMicrotask(() => drawWheelCanvas());
         return;
       }
     }
-    redrawSvCanvas();
-  }, [isOpen, h, color, anchorRef, redrawSvCanvas]);
+    queueMicrotask(() => drawWheelCanvas());
+  }, [isOpen, color, anchorRef, drawWheelCanvas]);
 
-  const pickSvFromClient = useCallback(
+  const pickWheelFromClient = useCallback(
     (clientX: number, clientY: number) => {
-      const canvas = svCanvasRef.current;
+      const canvas = wheelCanvasRef.current;
       if (!canvas) return;
-      const r = canvas.getBoundingClientRect();
-      const px = Math.max(0, Math.min(SV_W - 1, Math.floor(((clientX - r.left) / r.width) * SV_W)));
-      const py = Math.max(0, Math.min(SV_H - 1, Math.floor(((clientY - r.top) / r.height) * SV_H)));
-      const ns = px / (SV_W - 1 || 1);
-      const nv = 1 - py / (SV_H - 1 || 1);
-      applyHsv(h, ns, nv);
+      const rect = canvas.getBoundingClientRect();
+      const d = WHEEL_DIAM;
+      const cx = (d - 1) / 2;
+      const cy = (d - 1) / 2;
+      const R = Math.max(1, Math.min(cx, cy) - 0.5);
+      const px = ((clientX - rect.left) / rect.width) * d;
+      const py = ((clientY - rect.top) / rect.height) * d;
+      const dx = px - cx;
+      const dy = py - cy;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > R) dist = R;
+      const sat = R > 1e-6 ? dist / R : 0;
+      let hue = h;
+      if (sat > 0.02) {
+        hue = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+      }
+      applyHsv(hue, sat, v);
     },
-    [h, applyHsv]
+    [h, v, applyHsv]
   );
 
   useEffect(() => {
@@ -325,8 +350,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
     }
   };
 
-  const markerLeft = `${(s * 100).toFixed(2)}%`;
-  const markerTop = `${((1 - v) * 100).toFixed(2)}%`;
+  const hueRad = (h * Math.PI) / 180;
 
   if (!isOpen) return null;
 
@@ -363,46 +387,50 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
       </div>
 
       <div className="p-2.5 space-y-2.5">
-        <div className="relative overflow-hidden rounded border border-neutral-600 touch-none">
+        <div className="relative mx-auto aspect-square w-full max-w-[11.5rem] overflow-hidden rounded-full border border-neutral-600 bg-neutral-900 touch-none shadow-inner">
           <canvas
-            ref={svCanvasRef}
-            width={SV_W}
-            height={SV_H}
-            className="block w-full h-auto cursor-crosshair"
+            ref={wheelCanvasRef}
+            width={WHEEL_DIAM}
+            height={WHEEL_DIAM}
+            className="block h-auto w-full cursor-crosshair"
             onMouseDown={e => {
               e.preventDefault();
-              svDraggingRef.current = true;
-              pickSvFromClient(e.clientX, e.clientY);
+              wheelDraggingRef.current = true;
+              pickWheelFromClient(e.clientX, e.clientY);
             }}
             onMouseMove={e => {
-              if (!svDraggingRef.current) return;
-              pickSvFromClient(e.clientX, e.clientY);
+              if (!wheelDraggingRef.current) return;
+              pickWheelFromClient(e.clientX, e.clientY);
             }}
             onMouseUp={() => {
-              svDraggingRef.current = false;
+              wheelDraggingRef.current = false;
             }}
             onMouseLeave={() => {
-              svDraggingRef.current = false;
+              wheelDraggingRef.current = false;
             }}
           />
           <div
-            className="pointer-events-none absolute w-2 h-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ring-1 ring-black/40"
-            style={{ left: markerLeft, top: markerTop }}
+            className="pointer-events-none absolute w-2.5 h-2.5 rounded-full border-2 border-white shadow-md ring-1 ring-black/50"
+            style={{
+              left: `calc(50% + ${s * Math.cos(hueRad) * 50}%)`,
+              top: `calc(50% + ${s * Math.sin(hueRad) * 50}%)`,
+              transform: 'translate(-50%, -50%)',
+            }}
           />
         </div>
 
         <div className="space-y-0.5">
-          <label className="text-[9px] font-medium text-neutral-400" htmlFor="adv-color-hue">
-            색상(H)
+          <label className="text-[9px] font-medium text-neutral-400" htmlFor="adv-color-value">
+            밝기(V)
           </label>
           <input
-            id="adv-color-hue"
+            id="adv-color-value"
             type="range"
             min={0}
-            max={360}
+            max={100}
             step={1}
-            value={Math.round(((h % 360) + 360) % 360)}
-            onChange={e => applyHsv(parseInt(e.target.value, 10), s, v)}
+            value={Math.round(v * 100)}
+            onChange={e => applyHsv(h, s, parseInt(e.target.value, 10) / 100)}
             className="w-full h-1.5 rounded-lg accent-blue-500 cursor-pointer"
           />
         </div>
