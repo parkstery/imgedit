@@ -92,6 +92,8 @@ export default function App() {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
   const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
+  /** 캔버스 영역 스크롤을 초기화할 때 증가 (맞춤 등) */
+  const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
 
   // Initialize with a blank white canvas
   useEffect(() => {
@@ -266,7 +268,10 @@ export default function App() {
 
   const handleZoomIn = () => setState(prev => ({ ...prev, zoom: Math.min(8, prev.zoom + 0.1) }));
   const handleZoomOut = () => setState(prev => ({ ...prev, zoom: Math.max(0.01, prev.zoom - 0.1) }));
-  const handleResetZoom = () => setState(prev => ({ ...prev, zoom: 1, position: { x: 50, y: 50 } }));
+  const handleResetZoom = () => {
+    setCanvasScrollResetKey(k => k + 1);
+    setState(prev => ({ ...prev, zoom: 1, position: { x: 50, y: 50 } }));
+  };
   const handleZoomChange = (value: number) => setState(prev => ({ ...prev, zoom: Math.max(0.01, Math.min(8, value)) }));
 
   const handleToolChange = (tool: EditorState['tool']) =>
@@ -786,6 +791,7 @@ export default function App() {
           onShapeCommitted={(label) => appendUndoEntry({ type: 'shape', label })}
           onShapesMutation={handleShapesMutation}
           onPrepareImageUndo={handlePrepareImageUndoForPaint}
+          scrollResetKey={canvasScrollResetKey}
         />
       </main>
 

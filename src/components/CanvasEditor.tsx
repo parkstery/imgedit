@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import { EditorState, Point, Rect, Shape } from '../types';
 import { cn } from '../lib/utils';
 import { floodFillImageData, hexToRgba } from '../lib/floodFill';
@@ -32,6 +32,8 @@ interface CanvasEditorProps {
   onShapesMutation?: (beforeShapes: Shape[], label?: string) => void;
   /** 페인트통 등 비트맵 변경 직전에 Undo용 스냅샷을 쌓을 때 호출 */
   onPrepareImageUndo?: () => void;
+  /** 맞춤 등에서 뷰 스크롤을 맨 위·왼쪽으로 맞출 때 증가 */
+  scrollResetKey?: number;
 }
 
 export const CanvasEditor: React.FC<CanvasEditorProps> = ({
@@ -42,6 +44,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onShapeCommitted,
   onShapesMutation,
   onPrepareImageUndo,
+  scrollResetKey = 0,
 }) => {
   const getShapeCommitLabel = useCallback((tool: EditorState['tool']) => {
     switch (tool) {
@@ -63,7 +66,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   }, []);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  /** overflow 영역 스크롤 (그리기·이미지 좌표에 반영) */
+  const scrollPosRef = useRef({ x: 0, y: 0 });
+  const drawRef = useRef<() => void>(() => {});
+  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   /** 폴리라인: 마지막 점에서 커서까지 미리보기 */
@@ -253,8 +260,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     if (!state.image) return;
 
+    const sx = scrollPosRef.current.x;
+    const sy = scrollPosRef.current.y;
     ctx.save();
-    ctx.translate(state.position.x, state.position.y);
+    ctx.translate(state.position.x - sx, state.position.y - sy);
     ctx.scale(state.zoom, state.zoom);
 
     ctx.drawImage(state.image, 0, 0);
@@ -440,19 +449,54 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     ctx.restore();
   }, [state, polyHover]);
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (containerRef.current && canvasRef.current) {
-        canvasRef.current.width = containerRef.current.clientWidth;
-        canvasRef.current.height = containerRef.current.clientHeight;
-        draw();
-      }
+  useLayoutEffect(() => {
+    drawRef.current = draw;
+  }, [draw]);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    const canvas = canvasRef.current;
+    if (!el || !canvas) return;
+
+    const applySize = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      setViewportSize(prev => (prev.w === w && prev.h === h ? prev : { w, h }));
+      canvas.width = w;
+      canvas.height = h;
+      const sx = el.scrollLeft;
+      const sy = el.scrollTop;
+      scrollPosRef.current = { x: sx, y: sy };
+      drawRef.current();
     };
 
-    window.addEventListener('resize', handleResize);
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  }, [draw]);
+    applySize();
+    const ro = new ResizeObserver(applySize);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const sx = el.scrollLeft;
+      const sy = el.scrollTop;
+      scrollPosRef.current = { x: sx, y: sy };
+      drawRef.current();
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    el.scrollTo(0, 0);
+    scrollPosRef.current = { x: 0, y: 0 };
+    drawRef.current();
+  }, [state.image, scrollResetKey]);
 
   useEffect(() => {
     draw();
@@ -469,9 +513,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const toImageCoords = (p: Point): Point => {
+    const sx = scrollPosRef.current.x;
+    const sy = scrollPosRef.current.y;
+    const ox = state.position.x - sx;
+    const oy = state.position.y - sy;
     return {
-      x: (p.x - state.position.x) / state.zoom,
-      y: (p.y - state.position.y) / state.zoom,
+      x: (p.x - ox) / state.zoom,
+      y: (p.y - oy) / state.zoom,
     };
   };
 
@@ -892,18 +940,27 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleWheel = (e: React.WheelEvent) => {
+    const zoomModifier = e.ctrlKey || e.metaKey;
+    if (!zoomModifier) {
+      return;
+    }
     e.preventDefault();
     const zoomSpeed = 0.1;
     const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
     const newZoom = Math.max(0.01, Math.min(8, state.zoom + delta));
 
     const mousePos = getMousePos(e);
-    const imagePosBefore = toImageCoords(mousePos);
+    const sx = scrollPosRef.current.x;
+    const sy = scrollPosRef.current.y;
+    const imagePosBefore = {
+      x: (mousePos.x - state.position.x + sx) / state.zoom,
+      y: (mousePos.y - state.position.y + sy) / state.zoom,
+    };
 
     setState(prev => {
       const nextPos = {
-        x: mousePos.x - imagePosBefore.x * newZoom,
-        y: mousePos.y - imagePosBefore.y * newZoom,
+        x: mousePos.x - imagePosBefore.x * newZoom + sx,
+        y: mousePos.y - imagePosBefore.y * newZoom + sy,
       };
       return { ...prev, zoom: newZoom, position: nextPos };
     });
@@ -937,11 +994,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
   };
 
+  const SCROLL_PAD = 64;
+  const vw = viewportSize.w;
+  const vh = viewportSize.h;
+  const img = state.image;
+  const contentW =
+    img && vw > 0
+      ? Math.max(vw, Math.ceil(state.position.x + img.width * state.zoom + SCROLL_PAD))
+      : Math.max(vw, 1);
+  const contentH =
+    img && vh > 0
+      ? Math.max(vh, Math.ceil(state.position.y + img.height * state.zoom + SCROLL_PAD))
+      : Math.max(vh, 1);
+
   return (
     <div
-      ref={containerRef}
+      ref={viewportRef}
       className={cn(
-        'flex-1 bg-neutral-900 overflow-hidden relative transition-colors touch-none',
+        'flex-1 min-h-0 bg-neutral-900 overflow-auto relative transition-colors touch-none',
         state.tool === 'fill'
           ? 'cursor-paint-bucket'
           : state.tool === 'text'
@@ -1005,7 +1075,26 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         handleMouseUp();
       }}
     >
-      <canvas ref={canvasRef} className="block w-full h-full" />
+      <div className="relative pointer-events-none" style={{ width: contentW, height: contentH }}>
+        <div
+          className="sticky top-0 left-0 z-10 pointer-events-auto"
+          style={{
+            width: vw > 0 ? vw : undefined,
+            height: vh > 0 ? vh : undefined,
+            minWidth: vw > 0 ? vw : '100%',
+            minHeight: vh > 0 ? vh : '100%',
+          }}
+        >
+          <canvas
+            ref={canvasRef}
+            className="block"
+            style={{
+              width: vw > 0 ? vw : '100%',
+              height: vh > 0 ? vh : '100%',
+            }}
+          />
+        </div>
+      </div>
       {isDraggingOver && (
         <div className="absolute inset-0 border-2 border-dashed border-blue-500/50 flex items-center justify-center pointer-events-none bg-blue-500/5">
           <p className="text-blue-400 font-medium">이미지를 놓아서 불러오기</p>
