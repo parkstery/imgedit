@@ -15,7 +15,6 @@ import {
   drawLayerStackToContext,
   getActiveLayer,
   getDocumentCanvasSize,
-  mapLayersFlattenRasterToActive,
   mapLayersReplaceActiveLayerRaster,
   mapLayersReplaceActiveShapes,
   totalShapeCount,
@@ -553,24 +552,27 @@ export default function App() {
       await handleCopy();
 
       const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
+      const activeLayer = getActiveLayer(state.layers, state.activeLayerId);
       const canvas = document.createElement('canvas');
       canvas.width = dw;
       canvas.height = dh;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      drawLayerStackToContext(ctx, stateRef.current.layers, dw, dh);
+      if (activeLayer?.image) {
+        ctx.drawImage(activeLayer.image, 0, 0);
+      }
       ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
 
       const newImg = new Image();
       newImg.onload = () => {
         setState(prev => ({
           ...prev,
-          layers: mapLayersFlattenRasterToActive(
+          layers: mapLayersReplaceActiveLayerRaster(
             prev.layers,
             prev.activeLayerId,
             newImg,
-            getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+            activeLayer?.fileName ?? getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
           ),
           selection: null,
         }));
