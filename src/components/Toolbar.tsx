@@ -157,7 +157,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const advancedColorAnchorRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30">
+    <div className="min-h-14 bg-neutral-800 border-b border-neutral-700 flex flex-col gap-y-1 py-1.5 px-2 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30 lg:flex-row lg:items-center lg:gap-y-0 lg:py-0 lg:h-14">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1 lg:min-h-14 lg:gap-y-0">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
         <ToolbarButton onClick={onNewCanvas} icon={<FilePlus size={18} />} label="새 캔버스" />
@@ -351,9 +352,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="맞춤" />
       </div>
+      </div>
 
-      <div className="flex flex-1 min-w-0 items-center justify-end gap-0">
-        <div className="flex items-center gap-0.5 px-2 shrink-0">
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1 gap-y-1 border-t border-neutral-700 pt-1 -mx-2 px-2 sm:-mx-2 lg:mx-0 lg:flex-none lg:border-t-0 lg:border-l lg:border-neutral-700 lg:pt-0 lg:pl-2">
+        <div className="flex items-center gap-0.5 shrink-0">
           <ToolbarButton 
             onClick={onCopy} 
             icon={<Copy size={18} />} 
@@ -375,7 +377,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             shortcut="Ctrl+V"
           />
         </div>
-        <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0">
+        <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0 lg:ml-1">
           <button
             ref={advancedColorAnchorRef}
             type="button"
