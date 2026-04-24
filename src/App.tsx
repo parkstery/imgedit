@@ -76,6 +76,20 @@ function createFreshEditorState(): EditorState {
   return { ...INITIAL_STATE_BASE, layers: [L], activeLayerId: L.id };
 }
 
+/** 흰색 빈 캔버스(1200×800)를 만들고 로드된 `HTMLImageElement`로 콜백을 호출합니다. */
+function loadBlankStarterImage(onLoaded: (img: HTMLImageElement) => void): void {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 800;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const img = new Image();
+  img.onload = () => onLoaded(img);
+  img.src = canvas.toDataURL();
+}
+
 function cloneShapeDeep(shape: Shape): Shape {
   return {
     ...shape,
@@ -108,31 +122,21 @@ export default function App() {
   /** 캔버스 영역 스크롤을 초기화할 때 증가 (맞춤 등) */
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
 
-  // Initialize with a blank white canvas
+  // Initialize with a blank white canvas (첫 레이어 활성)
   useEffect(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 800;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      const img = new Image();
-      img.onload = () => {
-        setState(prev => ({
-          ...createFreshEditorState(),
-          ...loadFillToolPrefsFromStorage(),
-          fillTolerance: prev.fillTolerance,
-          fillIgnoreAlpha: prev.fillIgnoreAlpha,
-          textFontSize: prev.textFontSize,
-          image: img,
-          fileName: 'new-image.png',
-          position: { x: 50, y: 50 },
-          zoom: 0.8,
-        }));
-      };
-      img.src = canvas.toDataURL();
-    }
+    loadBlankStarterImage(img => {
+      setState(prev => ({
+        ...createFreshEditorState(),
+        ...loadFillToolPrefsFromStorage(),
+        fillTolerance: prev.fillTolerance,
+        fillIgnoreAlpha: prev.fillIgnoreAlpha,
+        textFontSize: prev.textFontSize,
+        image: img,
+        fileName: 'new-image.png',
+        position: { x: 50, y: 50 },
+        zoom: 0.8,
+      }));
+    });
   }, []);
 
   useLayoutEffect(() => {
@@ -257,6 +261,34 @@ export default function App() {
     };
     input.click();
   };
+
+  const handleNewCanvas = useCallback(() => {
+    if (
+      !window.confirm(
+        '새 캔버스를 펼칩니다. (Yes / No)\n\n현재 작업을 모두 폐기하고 새로 시작합니다. 계속하려면 확인(Yes)을 누르세요.'
+      )
+    ) {
+      return;
+    }
+    undoStackRef.current = [];
+    pasteUndoRef.current = [];
+    redoStackRef.current = [];
+    setUndoStack([]);
+    setRedoStack([]);
+    setCanvasScrollResetKey(k => k + 1);
+    loadBlankStarterImage(img => {
+      setState(prev => ({
+        ...createFreshEditorState(),
+        fillTolerance: prev.fillTolerance,
+        fillIgnoreAlpha: prev.fillIgnoreAlpha,
+        textFontSize: prev.textFontSize,
+        image: img,
+        fileName: 'new-image.png',
+        position: { x: 50, y: 50 },
+        zoom: 0.8,
+      }));
+    });
+  }, []);
 
   const handleSave = (filename?: string, format: string = 'image/png', quality: number = 0.92) => {
     if (!state.image) return;
@@ -805,6 +837,7 @@ export default function App() {
       <Toolbar 
         state={state}
         onOpen={handleOpen}
+        onNewCanvas={handleNewCanvas}
         onSave={() => handleSave()}
         onSaveAs={() => setIsSaveModalOpen(true)}
         onResize={() => setIsResizeModalOpen(true)}

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { 
-  FolderOpen, 
+  FolderOpen,
+  FilePlus,
   Save, 
   ZoomIn, 
   ZoomOut, 
@@ -100,6 +101,7 @@ function PolylineToolbarIcon({ size = 18 }: { size?: number }) {
 interface ToolbarProps {
   state: EditorState;
   onOpen: () => void;
+  onNewCanvas: () => void;
   onSave: () => void;
   onSaveAs: () => void;
   onResize: () => void;
@@ -127,6 +129,7 @@ interface ToolbarProps {
 export const Toolbar: React.FC<ToolbarProps> = ({
   state,
   onOpen,
+  onNewCanvas,
   onSave,
   onSaveAs,
   onResize,
@@ -157,6 +160,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
+        <ToolbarButton onClick={onNewCanvas} icon={<FilePlus size={18} />} label="새 캔버스" />
         <ToolbarButton onClick={() => onPaste(undefined, true)} icon={<ClipboardPaste size={18} />} label="클립보드에서 새 이미지로 열기" />
         <ToolbarButton onClick={onSave} icon={<Save size={18} />} label="저장" disabled={!state.image} />
         <ToolbarButton onClick={onSaveAs} icon={<Download size={18} />} label="다른 이름으로 저장" disabled={!state.image} />
