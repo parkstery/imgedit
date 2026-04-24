@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   FolderOpen, 
   Save, 
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
+import { AdvancedColorModal } from './AdvancedColorModal';
 
 /** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
 const PAINT_PALETTE = [
@@ -148,6 +149,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCut,
   onPaste
 }) => {
+  const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
+
   return (
     <div className="h-14 bg-neutral-800 border-b border-neutral-700 flex items-center px-2 gap-1 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
@@ -367,23 +370,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
         </div>
         <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0">
-          <label
-            className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80"
+          <button
+            type="button"
+            onClick={() => setAdvancedColorOpen(true)}
+            className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
             title="고급 색상 선택"
+            aria-label="고급 색상 선택"
+            aria-haspopup="dialog"
+            aria-expanded={advancedColorOpen}
           >
             <div className="absolute inset-0 bg-[conic-gradient(from_0deg,red,yellow,lime,cyan,blue,magenta,red)]" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-white/45" />
-            <div className="absolute inset-0 flex items-center justify-center text-white/90">
+            <div className="absolute inset-0 flex items-center justify-center text-white/90 pointer-events-none">
               <Palette size={12} />
             </div>
-            <input
-              type="color"
-              value={state.color}
-              onChange={(e) => onColorChange(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              aria-label="고급 색상 선택"
-            />
-          </label>
+          </button>
+          <AdvancedColorModal
+            isOpen={advancedColorOpen}
+            color={state.color}
+            onColorChange={onColorChange}
+            onRequestClose={() => setAdvancedColorOpen(false)}
+          />
           <input
             type="text"
             readOnly
