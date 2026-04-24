@@ -43,6 +43,9 @@ export interface EditorLayer {
   visible: boolean;
   /** true면 선택·이동·그리기 등 편집 불가(표시만) */
   locked: boolean;
+  /** 이 레이어에 귀속된 래스터(없으면 도형만) */
+  image: HTMLImageElement | null;
+  fileName: string | null;
   shapes: Shape[];
 }
 
@@ -70,8 +73,6 @@ export interface EditorState {
   selection: Rect | null;
   isSelecting: boolean;
   isPanning: boolean;
-  image: HTMLImageElement | null;
-  fileName: string | null;
   tool: Tool;
   color: string;
   lineWidth: number;
@@ -96,11 +97,6 @@ export interface EditorState {
 }
 
 export interface ImageUndoSnapshot {
-  /** 가능할 때만(동일 출처 등). 없으면 imageElement로 복구 */
-  imageDataUrl?: string;
-  /** toDataURL 불가(tainted 캔버스)여도 붙여넣기 직전 비트맵을 참조로 보존 */
-  imageElement?: HTMLImageElement | null;
-  fileName: string | null;
   layers: EditorLayer[];
   activeLayerId: string;
   selection: Rect | null;

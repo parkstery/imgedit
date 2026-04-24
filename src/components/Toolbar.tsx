@@ -26,7 +26,7 @@ import {
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
 import { AdvancedColorWindow } from './AdvancedColorWindow';
-import { totalShapeCount } from '../lib/layers';
+import { documentHasRaster, totalShapeCount } from '../lib/layers';
 
 /** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
 const PAINT_PALETTE = [
@@ -162,10 +162,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
         <ToolbarButton onClick={onNewCanvas} icon={<FilePlus size={18} />} label="새 캔버스" />
         <ToolbarButton onClick={() => onPaste(undefined, true)} icon={<ClipboardPaste size={18} />} label="클립보드에서 새 이미지로 열기" />
-        <ToolbarButton onClick={onSave} icon={<Save size={18} />} label="저장" disabled={!state.image} />
-        <ToolbarButton onClick={onSaveAs} icon={<Download size={18} />} label="다른 이름으로 저장" disabled={!state.image} />
-        <ToolbarButton onClick={onResize} icon={<Scale size={18} />} label="이미지 크기 조절" disabled={!state.image} />
-        <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!state.image} />
+        <ToolbarButton onClick={onSave} icon={<Save size={18} />} label="저장" disabled={!documentHasRaster(state.layers)} />
+        <ToolbarButton onClick={onSaveAs} icon={<Download size={18} />} label="다른 이름으로 저장" disabled={!documentHasRaster(state.layers)} />
+        <ToolbarButton onClick={onResize} icon={<Scale size={18} />} label="이미지 크기 조절" disabled={!documentHasRaster(state.layers)} />
+        <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!documentHasRaster(state.layers)} />
       </div>
 
       <div className="flex items-center gap-0.5 px-2 border-r border-neutral-700">
@@ -216,7 +216,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<Type size={18} />}
           label="텍스트"
           active={state.tool === 'text'}
-          disabled={!state.image}
+          disabled={!documentHasRaster(state.layers)}
         />
         {state.tool === 'text' && (
           <div className="flex items-center gap-1 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0">

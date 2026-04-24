@@ -21,10 +21,15 @@ import {
 } from '../lib/shapeGeometry';
 import {
   cloneLayersDeep,
+  documentHasRaster,
+  drawLayerStackToContext,
+  drawVisibleLayerRastersToContext,
   findLayerIdForShapeId,
   findShapeInLayers,
   flattenVisibleShapesInOrder,
   getActiveLayer,
+  getDocumentCanvasSize,
+  mapLayersFlattenRasterToActive,
   mapLayersReplaceActiveShapes,
   mapLayersUpdateShapeById,
   pickTopShapeInLayers,
@@ -298,56 +303,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!state.image) return;
+    if (!documentHasRaster(state.layers)) return;
 
+    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
     const sx = scrollPosRef.current.x;
     const sy = scrollPosRef.current.y;
     ctx.save();
     ctx.translate(state.position.x - sx, state.position.y - sy);
     ctx.scale(state.zoom, state.zoom);
 
-    ctx.drawImage(state.image, 0, 0);
-
-    state.layers.forEach(layer => {
-      if (!layer.visible) return;
-      layer.shapes.forEach(shape => {
-        if (shape.type === 'text') {
-          fillTextShapeOnContext(ctx, shape);
-          return;
-        }
-        const r = shape.rotation ?? 0;
-        const rotated = r !== 0;
-        if (rotated) {
-          const c = getShapeRotationCenter(shape);
-          ctx.save();
-          ctx.translate(c.x, c.y);
-          ctx.rotate(r);
-          ctx.translate(-c.x, -c.y);
-        }
-        ctx.strokeStyle = shape.color;
-        ctx.lineWidth = shape.lineWidth / state.zoom;
-        ctx.beginPath();
-        if (shape.type === 'line') {
-          ctx.moveTo(shape.x1, shape.y1);
-          ctx.lineTo(shape.x2, shape.y2);
-        } else if (shape.type === 'rect') {
-          ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
-        } else if (shape.type === 'ellipse') {
-          const rx = Math.abs(shape.x2 - shape.x1) / 2;
-          const ry = Math.abs(shape.y2 - shape.y1) / 2;
-          const cx = (shape.x1 + shape.x2) / 2;
-          const cy = (shape.y1 + shape.y2) / 2;
-          ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
-          ctx.moveTo(shape.points[0].x, shape.points[0].y);
-          for (let i = 1; i < shape.points.length; i++) {
-            ctx.lineTo(shape.points[i].x, shape.points[i].y);
-          }
-        }
-        ctx.stroke();
-        if (rotated) ctx.restore();
-      });
-    });
+    drawLayerStackToContext(ctx, state.layers, dw, dh);
 
     if (state.activeShape) {
         ctx.strokeStyle = state.activeShape.color;
@@ -541,7 +506,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     el.scrollTo(0, 0);
     scrollPosRef.current = { x: 0, y: 0 };
     drawRef.current();
-  }, [state.image, scrollResetKey]);
+  }, [state.layers, scrollResetKey]);
 
   useEffect(() => {
     draw();
@@ -569,7 +534,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handlePolylineClick = (e: React.MouseEvent) => {
-    if (state.tool !== 'polyline' || !state.image) return;
+    if (state.tool !== 'polyline' || !documentHasRaster(state.layers)) return;
     const al0 = getActiveLayer(state.layers, state.activeLayerId);
     if (al0?.locked) return;
     const imgPos = toImageCoords(getMousePos(e));
@@ -597,7 +562,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleFreehandClick = (e: React.MouseEvent) => {
-    if (state.tool !== 'freehand' || !state.image) return;
+    if (state.tool !== 'freehand' || !documentHasRaster(state.layers)) return;
     const al0 = getActiveLayer(state.layers, state.activeLayerId);
     if (al0?.locked) return;
     const imgPos = toImageCoords(getMousePos(e));
@@ -643,24 +608,25 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleFillClick = (e: React.MouseEvent) => {
-    if (state.tool !== 'fill' || !state.image) return;
+    if (state.tool !== 'fill' || !documentHasRaster(state.layers)) return;
+    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
     const imgPos = toImageCoords(getMousePos(e));
     const ix = Math.floor(imgPos.x);
     const iy = Math.floor(imgPos.y);
-    const { image: img, color: fillHex } = state;
+    const fillHex = state.color;
     const shapes = flattenVisibleShapesInOrder(state.layers);
 
-    if (ix < 0 || iy < 0 || ix >= img.width || iy >= img.height) return;
+    if (ix < 0 || iy < 0 || ix >= dw || iy >= dh) return;
 
     onPrepareImageUndo?.();
 
     const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
+    canvas.width = dw;
+    canvas.height = dh;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.drawImage(img, 0, 0);
+    drawVisibleLayerRastersToContext(ctx, state.layers, dw, dh);
     /** 도형 외곽선을 비트맵에 합성한 뒤 채우기 */
     strokeShapesOnContext(ctx, shapes);
 
@@ -690,8 +656,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     nextImg.onload = () => {
       setState(prev => ({
         ...prev,
-        image: nextImg,
-        layers: prev.layers.map(l => ({ ...l, shapes: [] })),
+        layers: mapLayersFlattenRasterToActive(
+          prev.layers,
+          prev.activeLayerId,
+          nextImg,
+          getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+        ),
         activeShape: null,
         selection: null,
         polylineDraft: null,
@@ -776,7 +746,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         } else {
           setState(prev => ({ ...prev, isSelecting: true, selection: null, selectedShapeIds: [] }));
         }
-      } else if (state.tool === 'text' && state.image) {
+      } else if (state.tool === 'text' && documentHasRaster(state.layers)) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (al?.locked) return;
         const imgPos = toImageCoords(pos);
@@ -870,7 +840,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       state.tool === 'select' &&
       !state.isSelecting &&
       !state.isPanning &&
-      state.image
+      documentHasRaster(state.layers)
     ) {
       const imgPos = toImageCoords(pos);
       let picked: PickedHandle | null = null;
@@ -1071,14 +1041,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const SCROLL_PAD = 64;
   const vw = viewportSize.w;
   const vh = viewportSize.h;
-  const img = state.image;
+  const { width: docW, height: docH } = getDocumentCanvasSize(state.layers);
+  const hasDoc = documentHasRaster(state.layers);
   const contentW =
-    img && vw > 0
-      ? Math.max(vw, Math.ceil(state.position.x + img.width * state.zoom + SCROLL_PAD))
+    hasDoc && vw > 0
+      ? Math.max(vw, Math.ceil(state.position.x + docW * state.zoom + SCROLL_PAD))
       : Math.max(vw, 1);
   const contentH =
-    img && vh > 0
-      ? Math.max(vh, Math.ceil(state.position.y + img.height * state.zoom + SCROLL_PAD))
+    hasDoc && vh > 0
+      ? Math.max(vh, Math.ceil(state.position.y + docH * state.zoom + SCROLL_PAD))
       : Math.max(vh, 1);
 
   return (

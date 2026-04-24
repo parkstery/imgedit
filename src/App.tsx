@@ -8,12 +8,14 @@ import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
 import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry, Shape, EditorLayer } from './types';
-import { renderShapesOnContext, measureTextShapeBounds } from './lib/drawShapes';
 import {
   cloneLayersDeep,
   createEditorLayer,
-  flattenVisibleShapesInOrder,
+  documentHasRaster,
+  drawLayerStackToContext,
   getActiveLayer,
+  getDocumentCanvasSize,
+  mapLayersFlattenRasterToActive,
   mapLayersReplaceActiveShapes,
   totalShapeCount,
 } from './lib/layers';
@@ -23,32 +25,6 @@ import {
   writeFillTolerance,
   writeFillIgnoreAlpha,
 } from './lib/fillToolStorage';
-function shapeToBoundsRect(shape: { x1: number; y1: number; x2: number; y2: number }): Rect {
-  return {
-    x: Math.min(shape.x1, shape.x2),
-    y: Math.min(shape.y1, shape.y2),
-    width: Math.abs(shape.x2 - shape.x1),
-    height: Math.abs(shape.y2 - shape.y1),
-  };
-}
-
-function rectsOverlap(a: Rect, b: Rect): boolean {
-  return !(a.x + a.width < b.x || b.x + b.width < a.x || a.y + a.height < b.y || b.y + b.height < a.y);
-}
-
-function imageToDataUrlSafe(image: HTMLImageElement): string | undefined {
-  const canvas = document.createElement('canvas');
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return undefined;
-  try {
-    ctx.drawImage(image, 0, 0);
-    return canvas.toDataURL();
-  } catch {
-    return undefined;
-  }
-}
 
 const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   zoom: 1,
@@ -56,8 +32,6 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   selection: null,
   isSelecting: false,
   isPanning: false,
-  image: null,
-  fileName: null,
   tool: 'select',
   color: '#ff0000',
   lineWidth: 2,
@@ -122,20 +96,23 @@ export default function App() {
   /** 캔버스 영역 스크롤을 초기화할 때 증가 (맞춤 등) */
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
 
-  // Initialize with a blank white canvas (첫 레이어 활성)
+  // Initialize with a blank white canvas (1번 레이어에 래스터 귀속)
   useEffect(() => {
     loadBlankStarterImage(img => {
-      setState(prev => ({
-        ...createFreshEditorState(),
-        ...loadFillToolPrefsFromStorage(),
-        fillTolerance: prev.fillTolerance,
-        fillIgnoreAlpha: prev.fillIgnoreAlpha,
-        textFontSize: prev.textFontSize,
-        image: img,
-        fileName: 'new-image.png',
-        position: { x: 50, y: 50 },
-        zoom: 0.8,
-      }));
+      setState(prev => {
+        const base = createFreshEditorState();
+        const L0 = base.layers[0];
+        return {
+          ...base,
+          ...loadFillToolPrefsFromStorage(),
+          fillTolerance: prev.fillTolerance,
+          fillIgnoreAlpha: prev.fillIgnoreAlpha,
+          textFontSize: prev.textFontSize,
+          layers: [{ ...L0, image: img, fileName: 'new-image.png' }],
+          position: { x: 50, y: 50 },
+          zoom: 0.8,
+        };
+      });
     });
   }, []);
 
@@ -168,41 +145,19 @@ export default function App() {
   }, []);
 
   const applyImageSnapshot = useCallback((snap: ImageUndoSnapshot) => {
-    const nextMeta = {
-      fileName: snap.fileName,
+    setState(prev => ({
+      ...prev,
       layers: cloneLayersDeep(snap.layers),
       activeLayerId: snap.activeLayerId,
       selection: snap.selection ? { ...snap.selection } : null,
       zoom: snap.zoom,
       position: { ...snap.position },
-    };
-
-    if (snap.imageDataUrl) {
-      const img = new Image();
-      img.onload = () => {
-        setState(prev => ({ ...prev, ...nextMeta, image: img }));
-      };
-      img.onerror = () => {
-        if (snap.imageElement) {
-          setState(prev => ({ ...prev, ...nextMeta, image: snap.imageElement! }));
-        }
-      };
-      img.src = snap.imageDataUrl;
-      return;
-    }
-
-    if (snap.imageElement) {
-      setState(prev => ({ ...prev, ...nextMeta, image: snap.imageElement! }));
-    }
+    }));
   }, []);
 
   const buildStateSnapshot = useCallback((source: EditorState): ImageUndoSnapshot | null => {
-    if (!source.image) return null;
-    const imageDataUrl = imageToDataUrlSafe(source.image);
+    if (!documentHasRaster(source.layers)) return null;
     return {
-      ...(imageDataUrl ? { imageDataUrl } : {}),
-      imageElement: source.image,
-      fileName: source.fileName,
       layers: cloneLayersDeep(source.layers),
       activeLayerId: source.activeLayerId,
       selection: source.selection ? { ...source.selection } : null,
@@ -236,12 +191,14 @@ export default function App() {
         setUndoStack([]);
         setRedoStack([]);
         setState(prev => ({
-          ...createFreshEditorState(),
-          fillTolerance: prev.fillTolerance,
-          fillIgnoreAlpha: prev.fillIgnoreAlpha,
-          textFontSize: prev.textFontSize,
-          image: img,
-          fileName: file.name,
+          ...prev,
+          layers: prev.layers.map(l =>
+            l.id === prev.activeLayerId
+              ? { ...l, image: img, fileName: file.name, shapes: [] }
+              : l
+          ),
+          selection: null,
+          selectedShapeIds: [],
           position: { x: 50, y: 50 },
           zoom: 0.8,
         }));
@@ -277,38 +234,43 @@ export default function App() {
     setRedoStack([]);
     setCanvasScrollResetKey(k => k + 1);
     loadBlankStarterImage(img => {
-      setState(prev => ({
-        ...createFreshEditorState(),
-        fillTolerance: prev.fillTolerance,
-        fillIgnoreAlpha: prev.fillIgnoreAlpha,
-        textFontSize: prev.textFontSize,
-        image: img,
-        fileName: 'new-image.png',
-        position: { x: 50, y: 50 },
-        zoom: 0.8,
-      }));
+      setState(prev => {
+        const base = createFreshEditorState();
+        const L0 = base.layers[0];
+        return {
+          ...base,
+          fillTolerance: prev.fillTolerance,
+          fillIgnoreAlpha: prev.fillIgnoreAlpha,
+          textFontSize: prev.textFontSize,
+          layers: [{ ...L0, image: img, fileName: 'new-image.png' }],
+          position: { x: 50, y: 50 },
+          zoom: 0.8,
+        };
+      });
     });
   }, []);
 
   const handleSave = (filename?: string, format: string = 'image/png', quality: number = 0.92) => {
-    if (!state.image) return;
+    if (!documentHasRaster(state.layers)) return;
+    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
     const canvas = document.createElement('canvas');
-    canvas.width = state.image.width;
-    canvas.height = state.image.height;
+    canvas.width = dw;
+    canvas.height = dh;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     // For JPEG, we should fill background with white if there are transparent areas
     if (format === 'image/jpeg') {
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    ctx.drawImage(state.image, 0, 0);
-    renderShapesOnContext(ctx, flattenVisibleShapesInOrder(state.layers));
-    
+    drawLayerStackToContext(ctx, state.layers, dw, dh);
+
     const extension = format.split('/')[1];
-    const finalFilename = filename || `edited-${state.fileName?.split('.')[0] || 'image'}.${extension}`;
+    const activeFn = getActiveLayer(state.layers, state.activeLayerId)?.fileName;
+    const finalFilename =
+      filename || `edited-${(activeFn?.split('.')[0] ?? 'image')}.${extension}`;
     
     const link = document.createElement('a');
     link.download = finalFilename;
@@ -327,12 +289,13 @@ export default function App() {
 
   const handleToolChange = (tool: EditorState['tool']) =>
     setState(prev => {
+      const { width: tw, height: th } = getDocumentCanvasSize(prev.layers);
       const textDraft =
-        tool === 'text' && prev.image
+        tool === 'text' && documentHasRaster(prev.layers)
           ? {
               id: Math.random().toString(36).slice(2, 11),
-              x: prev.image.width / 2,
-              y: prev.image.height / 2,
+              x: tw / 2,
+              y: th / 2,
               text: '',
               color: prev.color,
               fontSize: prev.textFontSize,
@@ -449,37 +412,34 @@ export default function App() {
   };
 
   const handleResize = (newWidth: number, newHeight: number) => {
-    if (!state.image) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = newWidth;
-    canvas.height = newHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!documentHasRaster(state.layers)) return;
 
-    ctx.drawImage(state.image, 0, 0, newWidth, newHeight);
-    
-    const newImg = new Image();
-    newImg.onload = () => {
-      setState(prev => ({ ...prev, image: newImg, selection: null }));
-      setIsResizeModalOpen(false);
+    const rescaleLayerImage = (layer: EditorLayer): Promise<EditorLayer> => {
+      if (!layer.image) return Promise.resolve(layer);
+      const c = document.createElement('canvas');
+      c.width = newWidth;
+      c.height = newHeight;
+      const x = c.getContext('2d');
+      if (!x) return Promise.resolve(layer);
+      x.drawImage(layer.image, 0, 0, newWidth, newHeight);
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ ...layer, image: img });
+        img.onerror = () => resolve(layer);
+        img.src = c.toDataURL();
+      });
     };
-    newImg.src = canvas.toDataURL();
+
+    Promise.all(state.layers.map(rescaleLayerImage)).then(nextLayers => {
+      setState(prev => ({ ...prev, layers: nextLayers, selection: null }));
+      setIsResizeModalOpen(false);
+    });
   };
 
   const handleCanvasSize = (newWidth: number, newHeight: number) => {
-    if (!state.image) return;
-    const currentWidth = state.image.width;
-    const currentHeight = state.image.height;
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = newWidth;
-    canvas.height = newHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!documentHasRaster(state.layers)) return;
+    const { width: currentWidth, height: currentHeight } = getDocumentCanvasSize(state.layers);
 
-    // Stretch image to new dimensions as requested
-    ctx.drawImage(state.image, 0, 0, newWidth, newHeight);
-    
     const scaleX = newWidth / currentWidth;
     const scaleY = newHeight / currentHeight;
 
@@ -512,59 +472,57 @@ export default function App() {
       return base;
     };
 
-    const scaledLayers = state.layers.map(layer => ({
-      ...layer,
-      shapes: layer.shapes.map(scaleShape),
-    }));
+    const rescaleLayerImage = (layer: EditorLayer): Promise<EditorLayer> => {
+      if (!layer.image) return Promise.resolve({ ...layer, shapes: layer.shapes.map(scaleShape) });
+      const c = document.createElement('canvas');
+      c.width = newWidth;
+      c.height = newHeight;
+      const x = c.getContext('2d');
+      if (!x) return Promise.resolve(layer);
+      x.drawImage(layer.image, 0, 0, newWidth, newHeight);
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () =>
+          resolve({
+            ...layer,
+            image: img,
+            shapes: layer.shapes.map(scaleShape),
+          });
+        img.onerror = () => resolve({ ...layer, shapes: layer.shapes.map(scaleShape) });
+        img.src = c.toDataURL();
+      });
+    };
 
-    const newImg = new Image();
-    newImg.onload = () => {
+    Promise.all(state.layers.map(rescaleLayerImage)).then(nextLayers => {
       setState(prev => ({
         ...prev,
-        image: newImg,
+        layers: nextLayers,
         selection: null,
-        layers: scaledLayers,
       }));
       setIsCanvasSizeModalOpen(false);
-    };
-    newImg.src = canvas.toDataURL();
+    });
   };
 
   const getSelectionCanvas = useCallback((rect: Rect): HTMLCanvasElement | null => {
-    if (!state.image) return null;
+    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
+    const full = document.createElement('canvas');
+    full.width = dw;
+    full.height = dh;
+    const fctx = full.getContext('2d');
+    if (!fctx) return null;
+    drawLayerStackToContext(fctx, state.layers, dw, dh);
+
     const canvas = document.createElement('canvas');
     canvas.width = rect.width;
     canvas.height = rect.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
-    
-    // Draw base image
-    ctx.drawImage(
-      state.image,
-      rect.x, rect.y, rect.width, rect.height,
-      0, 0, rect.width, rect.height
-    );
-
-    const flat = flattenVisibleShapesInOrder(state.layers);
-    flat.forEach(shape => {
-      if (shape.type === 'polyline') {
-        if (!rectsOverlap(rect, shapeToBoundsRect(shape))) return;
-      }
-      if (shape.type === 'text') {
-        const tb = measureTextShapeBounds(shape);
-        if (!tb || !rectsOverlap(rect, tb)) return;
-      }
-      ctx.save();
-      ctx.translate(-rect.x, -rect.y);
-      renderShapesOnContext(ctx, [shape]);
-      ctx.restore();
-    });
-
+    ctx.drawImage(full, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
     return canvas;
-  }, [state.image, state.layers]);
+  }, [state.layers]);
 
   const handleCopy = useCallback(async () => {
-    if (!state.selection || !state.image) return;
+    if (!state.selection || !documentHasRaster(state.layers)) return;
     const canvas = getSelectionCanvas(state.selection);
     if (!canvas) return;
 
@@ -585,80 +543,81 @@ export default function App() {
         }
       }, 'image/png');
     });
-  }, [state.selection, state.image, getSelectionCanvas]);
+  }, [state.selection, state.layers, getSelectionCanvas]);
 
   const handleCut = useCallback(async () => {
-    if (!state.selection || !state.image) return;
-    
+    if (!state.selection || !documentHasRaster(state.layers)) return;
+
     try {
-      // Wait for copy to complete
       await handleCopy();
 
+      const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
       const canvas = document.createElement('canvas');
-      canvas.width = state.image.width;
-      canvas.height = state.image.height;
+      canvas.width = dw;
+      canvas.height = dh;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      ctx.drawImage(state.image, 0, 0);
+      drawLayerStackToContext(ctx, stateRef.current.layers, dw, dh);
       ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
 
       const newImg = new Image();
       newImg.onload = () => {
-        setState(prev => ({ ...prev, image: newImg, selection: null }));
+        setState(prev => ({
+          ...prev,
+          layers: mapLayersFlattenRasterToActive(
+            prev.layers,
+            prev.activeLayerId,
+            newImg,
+            getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+          ),
+          selection: null,
+        }));
       };
       newImg.src = canvas.toDataURL();
     } catch (err) {
       console.error('Cut failed:', err);
     }
-  }, [state.selection, state.image, handleCopy]);
+  }, [state.selection, state.layers, handleCopy]);
 
   const processPastedImage = useCallback((img: HTMLImageElement, asNew: boolean = false) => {
     const s = stateRef.current;
 
-    const buildPasteSnapshot = (): ImageUndoSnapshot | null => {
-      if (!s.image) return null;
-      const imageDataUrl = imageToDataUrlSafe(s.image);
-      return {
-        ...(imageDataUrl ? { imageDataUrl } : {}),
-        imageElement: s.image,
-        fileName: s.fileName,
-        layers: cloneLayersDeep(s.layers),
-        activeLayerId: s.activeLayerId,
-        selection: s.selection ? { ...s.selection } : null,
-        zoom: s.zoom,
-        position: { ...s.position },
-      };
-    };
+    const buildPasteSnapshot = (): ImageUndoSnapshot => ({
+      layers: cloneLayersDeep(s.layers),
+      activeLayerId: s.activeLayerId,
+      selection: s.selection ? { ...s.selection } : null,
+      zoom: s.zoom,
+      position: { ...s.position },
+    });
 
     const snapshot = buildPasteSnapshot();
 
-    if (!s.image || asNew) {
-      if (snapshot) {
-        appendUndoEntry({ type: 'image', snapshot, label: '붙여넣기 (새 이미지)' });
-        pushPasteUndoSnapshot(snapshot);
-      }
+    if (!documentHasRaster(s.layers) || asNew) {
+      appendUndoEntry({ type: 'image', snapshot, label: '붙여넣기 (새 이미지)' });
+      pushPasteUndoSnapshot(snapshot);
       setState(prev => {
         const fresh = createFreshEditorState();
+        const L0 = fresh.layers[0];
         return {
           ...prev,
-          image: img,
-          fileName: 'pasted-image.png',
+          layers: [{ ...L0, image: img, fileName: 'pasted-image.png' }],
+          activeLayerId: L0.id,
           zoom: 1,
           position: { x: 50, y: 50 },
-          layers: fresh.layers,
-          activeLayerId: fresh.activeLayerId,
           selection: null,
+          selectedShapeIds: [],
         };
       });
     } else {
+      const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
       const canvas = document.createElement('canvas');
-      canvas.width = s.image.width;
-      canvas.height = s.image.height;
+      canvas.width = dw;
+      canvas.height = dh;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      ctx.drawImage(s.image, 0, 0);
+      drawLayerStackToContext(ctx, s.layers, dw, dh);
 
       if (s.selection) {
         ctx.drawImage(
@@ -669,8 +628,8 @@ export default function App() {
           s.selection.height
         );
       } else {
-        const x = (s.image.width - img.width) / 2;
-        const y = (s.image.height - img.height) / 2;
+        const x = (dw - img.width) / 2;
+        const y = (dh - img.height) / 2;
         ctx.drawImage(img, x, y);
       }
 
@@ -684,11 +643,18 @@ export default function App() {
 
       const mergedImg = new Image();
       mergedImg.onload = () => {
-        if (snapshot) {
-          appendUndoEntry({ type: 'imageMerge', snapshot, label: '붙여넣기 (현재 이미지)' });
-          pushPasteUndoSnapshot(snapshot);
-        }
-        setState(prev => ({ ...prev, image: mergedImg, selection: null }));
+        appendUndoEntry({ type: 'imageMerge', snapshot, label: '붙여넣기 (현재 이미지)' });
+        pushPasteUndoSnapshot(snapshot);
+        setState(prev => ({
+          ...prev,
+          layers: mapLayersFlattenRasterToActive(
+            prev.layers,
+            prev.activeLayerId,
+            mergedImg,
+            getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+          ),
+          selection: null,
+        }));
       };
       mergedImg.src = mergedDataUrl;
     }
@@ -882,23 +848,23 @@ export default function App() {
         isOpen={isSaveModalOpen}
         onClose={() => setIsSaveModalOpen(false)}
         onSave={handleSave}
-        defaultFileName={state.fileName || 'image.png'}
+        defaultFileName={getActiveLayer(state.layers, state.activeLayerId)?.fileName || 'image.png'}
       />
 
       <ResizeModal
         isOpen={isResizeModalOpen}
         onClose={() => setIsResizeModalOpen(false)}
         onResize={handleResize}
-        currentWidth={state.image?.width || 0}
-        currentHeight={state.image?.height || 0}
+        currentWidth={getDocumentCanvasSize(state.layers).width}
+        currentHeight={getDocumentCanvasSize(state.layers).height}
       />
 
       <CanvasSizeModal
         isOpen={isCanvasSizeModalOpen}
         onClose={() => setIsCanvasSizeModalOpen(false)}
         onApply={handleCanvasSize}
-        currentWidth={state.image?.width || 0}
-        currentHeight={state.image?.height || 0}
+        currentWidth={getDocumentCanvasSize(state.layers).width}
+        currentHeight={getDocumentCanvasSize(state.layers).height}
       />
 
       <TextDraftPanel
