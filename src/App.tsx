@@ -40,6 +40,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   fillIgnoreAlpha: false,
   activeShape: null,
   selectedShapeIds: [],
+  selectedRasterLayerId: null,
   polylineDraft: null,
   freehandDraft: null,
   textDraft: null,
@@ -152,6 +153,7 @@ export default function App() {
       selection: snap.selection ? { ...snap.selection } : null,
       zoom: snap.zoom,
       position: { ...snap.position },
+      selectedRasterLayerId: null,
     }));
   }, []);
 
@@ -194,11 +196,12 @@ export default function App() {
           ...prev,
           layers: prev.layers.map(l =>
             l.id === prev.activeLayerId
-              ? { ...l, image: img, fileName: file.name, shapes: [] }
+              ? { ...l, image: img, fileName: file.name, shapes: [], imageX: 0, imageY: 0 }
               : l
           ),
           selection: null,
           selectedShapeIds: [],
+          selectedRasterLayerId: null,
           position: { x: 50, y: 50 },
           zoom: 0.8,
         }));
@@ -306,6 +309,7 @@ export default function App() {
         tool,
         selection: null,
         selectedShapeIds: tool === 'select' ? prev.selectedShapeIds : [],
+        selectedRasterLayerId: tool === 'select' ? prev.selectedRasterLayerId : null,
         polylineDraft: null,
         freehandDraft: null,
         textDraft,
@@ -341,6 +345,7 @@ export default function App() {
           ...s,
           layers: mapLayersReplaceActiveShapes(s.layers, s.activeLayerId, al.shapes.slice(0, -1)),
           selectedShapeIds: [],
+          selectedRasterLayerId: null,
         };
       });
       if (undoPoint && totalShapeCount(stateRef.current.layers) > 0) {
@@ -361,6 +366,7 @@ export default function App() {
           l.id !== last.layerId ? l : { ...l, shapes: l.shapes.slice(0, -1) }
         ),
         selectedShapeIds: [],
+        selectedRasterLayerId: null,
       }));
     } else if (last.type === 'image' || last.type === 'imageMerge') {
       if (pasteUndoRef.current.length > 0) {
@@ -373,6 +379,7 @@ export default function App() {
         layers: cloneLayersDeep(last.beforeLayers),
         activeLayerId: last.beforeActiveLayerId,
         selectedShapeIds: [],
+        selectedRasterLayerId: null,
       }));
     }
     if (undoPoint) {
@@ -408,6 +415,7 @@ export default function App() {
       ...prev,
       layers: prev.layers.map(l => ({ ...l, shapes: [] })),
       selectedShapeIds: [],
+      selectedRasterLayerId: null,
     }));
   };
 
@@ -424,14 +432,19 @@ export default function App() {
       x.drawImage(layer.image, 0, 0, newWidth, newHeight);
       return new Promise(resolve => {
         const img = new Image();
-        img.onload = () => resolve({ ...layer, image: img });
+        img.onload = () => resolve({ ...layer, image: img, imageX: 0, imageY: 0 });
         img.onerror = () => resolve(layer);
         img.src = c.toDataURL();
       });
     };
 
     Promise.all(state.layers.map(rescaleLayerImage)).then(nextLayers => {
-      setState(prev => ({ ...prev, layers: nextLayers, selection: null }));
+      setState(prev => ({
+        ...prev,
+        layers: nextLayers,
+        selection: null,
+        selectedRasterLayerId: null,
+      }));
       setIsResizeModalOpen(false);
     });
   };
@@ -473,7 +486,14 @@ export default function App() {
     };
 
     const rescaleLayerImage = (layer: EditorLayer): Promise<EditorLayer> => {
-      if (!layer.image) return Promise.resolve({ ...layer, shapes: layer.shapes.map(scaleShape) });
+      if (!layer.image) {
+        return Promise.resolve({
+          ...layer,
+          shapes: layer.shapes.map(scaleShape),
+          imageX: Math.round((layer.imageX ?? 0) * scaleX),
+          imageY: Math.round((layer.imageY ?? 0) * scaleY),
+        });
+      }
       const c = document.createElement('canvas');
       c.width = newWidth;
       c.height = newHeight;
@@ -487,8 +507,16 @@ export default function App() {
             ...layer,
             image: img,
             shapes: layer.shapes.map(scaleShape),
+            imageX: Math.round((layer.imageX ?? 0) * scaleX),
+            imageY: Math.round((layer.imageY ?? 0) * scaleY),
           });
-        img.onerror = () => resolve({ ...layer, shapes: layer.shapes.map(scaleShape) });
+        img.onerror = () =>
+          resolve({
+            ...layer,
+            shapes: layer.shapes.map(scaleShape),
+            imageX: Math.round((layer.imageX ?? 0) * scaleX),
+            imageY: Math.round((layer.imageY ?? 0) * scaleY),
+          });
         img.src = c.toDataURL();
       });
     };
@@ -498,6 +526,7 @@ export default function App() {
         ...prev,
         layers: nextLayers,
         selection: null,
+        selectedRasterLayerId: null,
       }));
       setIsCanvasSizeModalOpen(false);
     });
@@ -560,7 +589,9 @@ export default function App() {
       if (!ctx) return;
 
       if (activeLayer?.image) {
-        ctx.drawImage(activeLayer.image, 0, 0);
+        const ox = activeLayer.imageX ?? 0;
+        const oy = activeLayer.imageY ?? 0;
+        ctx.drawImage(activeLayer.image, ox, oy);
       }
       ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
 
@@ -575,6 +606,7 @@ export default function App() {
             activeLayer?.fileName ?? getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
           ),
           selection: null,
+          selectedRasterLayerId: null,
         }));
       };
       newImg.src = canvas.toDataURL();
@@ -610,6 +642,7 @@ export default function App() {
           position: { x: 50, y: 50 },
           selection: null,
           selectedShapeIds: [],
+          selectedRasterLayerId: null,
         };
       });
     } else {
@@ -623,7 +656,7 @@ export default function App() {
 
       /** 활성 레이어 래스터만 깔고 그 위에 붙여넣기(다른 레이어 래스터는 합성하지 않음). */
       if (activeLayer?.image) {
-        ctx.drawImage(activeLayer.image, 0, 0);
+        ctx.drawImage(activeLayer.image, activeLayer.imageX ?? 0, activeLayer.imageY ?? 0);
       }
 
       if (s.selection) {
@@ -661,6 +694,7 @@ export default function App() {
             activeLayer?.fileName ?? 'pasted-image.png'
           ),
           selection: null,
+          selectedRasterLayerId: null,
         }));
       };
       mergedImg.src = mergedDataUrl;

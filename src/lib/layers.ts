@@ -17,22 +17,29 @@ export function createEditorLayer(name: string, shapes: Shape[] = []): EditorLay
     locked: false,
     image: null,
     fileName: null,
+    imageX: 0,
+    imageY: 0,
     shapes,
   };
 }
 
-/** 모든 레이어 래스터의 최대 너비·높이(없으면 기본 문서 크기) */
+/** 모든 레이어 래스터 배치의 합집합(없으면 기본 문서 크기) */
 export function getDocumentCanvasSize(layers: readonly EditorLayer[]): { width: number; height: number } {
-  let w = 0;
-  let h = 0;
+  let maxR = 0;
+  let maxB = 0;
   for (const layer of layers) {
     if (layer.image) {
-      w = Math.max(w, layer.image.width);
-      h = Math.max(h, layer.image.height);
+      const ix = layer.imageX ?? 0;
+      const iy = layer.imageY ?? 0;
+      maxR = Math.max(maxR, ix + layer.image.width);
+      maxB = Math.max(maxB, iy + layer.image.height);
     }
   }
-  if (w <= 0 || h <= 0) return { width: DEFAULT_DOC_WIDTH, height: DEFAULT_DOC_HEIGHT };
-  return { width: w, height: h };
+  if (maxR <= 0 || maxB <= 0) return { width: DEFAULT_DOC_WIDTH, height: DEFAULT_DOC_HEIGHT };
+  return {
+    width: Math.max(DEFAULT_DOC_WIDTH, maxR),
+    height: Math.max(DEFAULT_DOC_HEIGHT, maxB),
+  };
 }
 
 export function documentHasRaster(layers: readonly EditorLayer[]): boolean {
@@ -50,7 +57,7 @@ export function drawLayerStackToContext(
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.image) {
-      ctx.drawImage(layer.image, 0, 0);
+      ctx.drawImage(layer.image, layer.imageX ?? 0, layer.imageY ?? 0);
     }
     renderShapesOnContext(ctx, layer.shapes);
   }
@@ -67,7 +74,7 @@ export function drawVisibleLayerRastersToContext(
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.image) {
-      ctx.drawImage(layer.image, 0, 0);
+      ctx.drawImage(layer.image, layer.imageX ?? 0, layer.imageY ?? 0);
     }
   }
 }
@@ -130,8 +137,15 @@ export function mapLayersFlattenRasterToActive(
 ): EditorLayer[] {
   return layers.map(l =>
     l.id === activeLayerId
-      ? { ...l, image: mergedImage, fileName: activeFileName ?? l.fileName, shapes: [] }
-      : { ...l, image: null, fileName: null, shapes: [] }
+      ? {
+          ...l,
+          image: mergedImage,
+          fileName: activeFileName ?? l.fileName,
+          shapes: [],
+          imageX: 0,
+          imageY: 0,
+        }
+      : { ...l, image: null, fileName: null, shapes: [], imageX: 0, imageY: 0 }
   );
 }
 
@@ -143,7 +157,9 @@ export function mapLayersReplaceActiveLayerRaster(
   fileName: string | null,
 ): EditorLayer[] {
   return layers.map(l =>
-    l.id === activeLayerId ? { ...l, image, fileName: fileName ?? l.fileName } : l
+    l.id === activeLayerId
+      ? { ...l, image, fileName: fileName ?? l.fileName, imageX: 0, imageY: 0 }
+      : l
   );
 }
 
@@ -173,6 +189,34 @@ export function pickTopShapeInLayers(
     if (!layer.visible || layer.locked) continue;
     const hit = pickTopShape(layer.shapes, p, tolerance);
     if (hit) return hit;
+  }
+  return null;
+}
+
+export type InteractivePickResult =
+  | { kind: 'shape'; shape: Shape; layerId: string }
+  | { kind: 'raster'; layerId: string };
+
+/** 위 레이어부터: 같은 레이어에서는 도형이 래스터보다 위. 잠금·숨김 레이어는 제외. */
+export function pickTopInteractiveTarget(
+  layers: readonly EditorLayer[],
+  p: Point,
+  tolerance: number
+): InteractivePickResult | null {
+  for (let li = layers.length - 1; li >= 0; li--) {
+    const layer = layers[li];
+    if (!layer.visible || layer.locked) continue;
+    const shapeHit = pickTopShape(layer.shapes, p, tolerance);
+    if (shapeHit) return { kind: 'shape', shape: shapeHit, layerId: layer.id };
+    if (layer.image) {
+      const ix = layer.imageX ?? 0;
+      const iy = layer.imageY ?? 0;
+      const w = layer.image.width;
+      const h = layer.image.height;
+      if (p.x >= ix && p.y >= iy && p.x < ix + w && p.y < iy + h) {
+        return { kind: 'raster', layerId: layer.id };
+      }
+    }
   }
   return null;
 }

@@ -24,7 +24,6 @@ import {
   documentHasRaster,
   drawLayerStackToContext,
   drawVisibleLayerRastersToContext,
-  findLayerIdForShapeId,
   findShapeInLayers,
   flattenVisibleShapesInOrder,
   getActiveLayer,
@@ -32,7 +31,7 @@ import {
   mapLayersFlattenRasterToActive,
   mapLayersReplaceActiveShapes,
   mapLayersUpdateShapeById,
-  pickTopShapeInLayers,
+  pickTopInteractiveTarget,
 } from '../lib/layers';
 
 interface CanvasEditorProps {
@@ -111,6 +110,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     shapeId: string;
     startShape: Shape;
     startPointer: Point;
+    snapshotBefore: EditorLayer[];
+    hasMoved: boolean;
+  } | null>(null);
+  /** 선택 도구: 레이어 래스터 드래그 이동 */
+  const rasterMoveStateRef = useRef<{
+    startImagePoint: Point;
+    layerId: string;
+    initialX: number;
+    initialY: number;
     snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
@@ -235,47 +243,104 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
       if (isEditableTarget(e.target)) return;
 
-      if (state.tool === 'select' && state.selectedShapeIds.length > 0) {
+      if (state.tool === 'select') {
         if (e.key === 'Escape') {
-          e.preventDefault();
-          setState(prev => ({ ...prev, selectedShapeIds: [] }));
-          return;
+          if (state.selectedShapeIds.length > 0) {
+            e.preventDefault();
+            setState(prev => ({ ...prev, selectedShapeIds: [] }));
+            return;
+          }
+          if (state.selectedRasterLayerId) {
+            e.preventDefault();
+            setState(prev => ({ ...prev, selectedRasterLayerId: null }));
+            return;
+          }
         }
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-          e.preventDefault();
-          const before = cloneLayersDeep(state.layers);
-          const removing = new Set(state.selectedShapeIds);
-          setState(prev => ({
-            ...prev,
-            layers: prev.layers.map(layer => ({
-              ...layer,
-              shapes: layer.shapes.filter(sh => !removing.has(sh.id)),
-            })),
-            selectedShapeIds: [],
-          }));
-          onLayersMutation?.(before, state.activeLayerId, '도형 삭제');
-          return;
-        }
-        const arrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
-          || e.key === 'ArrowUp' || e.key === 'ArrowDown';
-        if (arrow) {
-          e.preventDefault();
-          const step = e.shiftKey ? 10 : 1;
-          const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-          const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-          const before = cloneLayersDeep(state.layers);
-          const movingIds = new Set(state.selectedShapeIds);
-          setState(prev => ({
-            ...prev,
-            layers: prev.layers.map(layer => ({
-              ...layer,
-              shapes: layer.shapes.map(sh =>
-                movingIds.has(sh.id) ? translateShape(sh, dx, dy) : sh
+
+        if (state.selectedShapeIds.length > 0) {
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            const before = cloneLayersDeep(state.layers);
+            const removing = new Set(state.selectedShapeIds);
+            setState(prev => ({
+              ...prev,
+              layers: prev.layers.map(layer => ({
+                ...layer,
+                shapes: layer.shapes.filter(sh => !removing.has(sh.id)),
+              })),
+              selectedShapeIds: [],
+            }));
+            onLayersMutation?.(before, state.activeLayerId, '도형 삭제');
+            return;
+          }
+          const arrow =
+            e.key === 'ArrowLeft' ||
+            e.key === 'ArrowRight' ||
+            e.key === 'ArrowUp' ||
+            e.key === 'ArrowDown';
+          if (arrow) {
+            e.preventDefault();
+            const step = e.shiftKey ? 10 : 1;
+            const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+            const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+            const before = cloneLayersDeep(state.layers);
+            const movingIds = new Set(state.selectedShapeIds);
+            setState(prev => ({
+              ...prev,
+              layers: prev.layers.map(layer => ({
+                ...layer,
+                shapes: layer.shapes.map(sh =>
+                  movingIds.has(sh.id) ? translateShape(sh, dx, dy) : sh
+                ),
+              })),
+            }));
+            onLayersMutation?.(before, state.activeLayerId, '도형 이동');
+            return;
+          }
+        } else if (state.selectedRasterLayerId) {
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+            e.preventDefault();
+            const rid = state.selectedRasterLayerId;
+            const before = cloneLayersDeep(state.layers);
+            setState(prev => ({
+              ...prev,
+              layers: prev.layers.map(l =>
+                l.id === rid
+                  ? { ...l, image: null, fileName: null, imageX: 0, imageY: 0 }
+                  : l
               ),
-            })),
-          }));
-          onLayersMutation?.(before, state.activeLayerId, '도형 이동');
-          return;
+              selectedRasterLayerId: null,
+            }));
+            onLayersMutation?.(before, state.activeLayerId, '이미지 삭제');
+            return;
+          }
+          const arrow =
+            e.key === 'ArrowLeft' ||
+            e.key === 'ArrowRight' ||
+            e.key === 'ArrowUp' ||
+            e.key === 'ArrowDown';
+          if (arrow) {
+            e.preventDefault();
+            const step = e.shiftKey ? 10 : 1;
+            const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+            const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+            const before = cloneLayersDeep(state.layers);
+            const rid = state.selectedRasterLayerId;
+            setState(prev => ({
+              ...prev,
+              layers: prev.layers.map(l =>
+                l.id === rid
+                  ? {
+                      ...l,
+                      imageX: Math.max(0, (l.imageX ?? 0) + dx),
+                      imageY: Math.max(0, (l.imageY ?? 0) + dy),
+                    }
+                  : l
+              ),
+            }));
+            onLayersMutation?.(before, state.activeLayerId, '이미지 이동');
+            return;
+          }
         }
       }
     };
@@ -287,6 +352,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     state.freehandDraft,
     state.textDraft,
     state.selectedShapeIds,
+    state.selectedRasterLayerId,
     state.layers,
     state.activeLayerId,
     commitPolylineDraft,
@@ -453,6 +519,23 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             void t;
           }
         }
+      }
+    }
+
+    if (
+      state.tool === 'select' &&
+      state.selectedRasterLayerId &&
+      state.selectedShapeIds.length === 0
+    ) {
+      const rl = state.layers.find(l => l.id === state.selectedRasterLayerId);
+      if (rl?.image) {
+        const ix = rl.imageX ?? 0;
+        const iy = rl.imageY ?? 0;
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 1.5 / state.zoom;
+        ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
+        ctx.strokeRect(ix, iy, rl.image.width, rl.image.height);
+        ctx.setLineDash([]);
       }
     }
 
@@ -717,9 +800,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           }
         }
         const tol = 6 / state.zoom;
-        const hit = pickTopShapeInLayers(state.layers, imgPos, tol);
-        if (hit) {
-          const layerIdForHit = findLayerIdForShapeId(state.layers, hit.id);
+        const target = pickTopInteractiveTarget(state.layers, imgPos, tol);
+        if (target?.kind === 'shape') {
+          const hit = target.shape;
+          const layerIdForHit = target.layerId;
           const ids = state.selectedShapeIds.includes(hit.id) && state.selectedShapeIds.length > 0
             ? state.selectedShapeIds
             : [hit.id];
@@ -740,11 +824,38 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ...prev,
             activeLayerId: layerIdForHit ?? prev.activeLayerId,
             selectedShapeIds: ids,
+            selectedRasterLayerId: null,
             selection: null,
             isSelecting: false,
           }));
+        } else if (target?.kind === 'raster') {
+          const lyr = state.layers.find(l => l.id === target.layerId);
+          if (lyr?.image) {
+            rasterMoveStateRef.current = {
+              startImagePoint: imgPos,
+              layerId: target.layerId,
+              initialX: lyr.imageX ?? 0,
+              initialY: lyr.imageY ?? 0,
+              snapshotBefore: cloneLayersDeep(state.layers),
+              hasMoved: false,
+            };
+            setState(prev => ({
+              ...prev,
+              activeLayerId: target.layerId,
+              selectedRasterLayerId: target.layerId,
+              selectedShapeIds: [],
+              selection: null,
+              isSelecting: false,
+            }));
+          }
         } else {
-          setState(prev => ({ ...prev, isSelecting: true, selection: null, selectedShapeIds: [] }));
+          setState(prev => ({
+            ...prev,
+            isSelecting: true,
+            selection: null,
+            selectedShapeIds: [],
+            selectedRasterLayerId: null,
+          }));
         }
       } else if (state.tool === 'text' && documentHasRaster(state.layers)) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
@@ -817,6 +928,23 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       return;
     }
 
+    if (rasterMoveStateRef.current) {
+      const st = rasterMoveStateRef.current;
+      const current = toImageCoords(pos);
+      const dx = current.x - st.startImagePoint.x;
+      const dy = current.y - st.startImagePoint.y;
+      if (dx !== 0 || dy !== 0) st.hasMoved = true;
+      const nx = Math.max(0, st.initialX + dx);
+      const ny = Math.max(0, st.initialY + dy);
+      setState(prev => ({
+        ...prev,
+        layers: prev.layers.map(l =>
+          l.id === st.layerId ? { ...l, imageX: nx, imageY: ny } : l
+        ),
+      }));
+      return;
+    }
+
     if (moveStateRef.current) {
       const { startImagePoint, initialById } = moveStateRef.current;
       const current = toImageCoords(pos);
@@ -860,8 +988,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       } else {
         if (hoverHandle) setHoverHandle(null);
         const tol = 6 / state.zoom;
-        const hit = pickTopShapeInLayers(state.layers, imgPos, tol);
-        if (!!hit !== hoveringShape) setHoveringShape(!!hit);
+        const t = pickTopInteractiveTarget(state.layers, imgPos, tol);
+        const hoverMove = t != null;
+        if (hoverMove !== hoveringShape) setHoveringShape(hoverMove);
       }
     } else {
       if (hoverHandle) setHoverHandle(null);
@@ -941,6 +1070,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const { snapshotBefore, hasMoved } = rotateStateRef.current;
       rotateStateRef.current = null;
       if (hasMoved) onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 회전');
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+    if (rasterMoveStateRef.current) {
+      const st = rasterMoveStateRef.current;
+      rasterMoveStateRef.current = null;
+      if (st.hasMoved) {
+        onLayersMutation?.(st.snapshotBefore, st.layerId, '이미지 이동');
+      }
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
@@ -1063,7 +1202,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ? 'cursor-text'
             : state.tool === 'select' && (hoverHandle || resizeStateRef.current || rotateStateRef.current)
               ? null
-              : state.tool === 'select' && (hoveringShape || moveStateRef.current)
+              : state.tool === 'select' &&
+                (hoveringShape || moveStateRef.current || rasterMoveStateRef.current)
                 ? 'cursor-move'
                 : state.tool === 'select'
                   ? 'cursor-default'

@@ -22,6 +22,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
         layers: [...prev.layers, L],
         activeLayerId: L.id,
         selectedShapeIds: [],
+        selectedRasterLayerId: null,
       };
     });
   };
@@ -36,7 +37,14 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
         const fallback = next[Math.max(0, idx - 1)] ?? next[0];
         aid = fallback.id;
       }
-      return { ...prev, layers: next, activeLayerId: aid, selectedShapeIds: [] };
+      return {
+        ...prev,
+        layers: next,
+        activeLayerId: aid,
+        selectedShapeIds: [],
+        selectedRasterLayerId:
+          prev.selectedRasterLayerId === layerId ? null : prev.selectedRasterLayerId,
+      };
     });
   };
 
@@ -94,6 +102,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
                 ...s,
                 activeLayerId: layer.id,
                 selectedShapeIds: [],
+                selectedRasterLayerId: null,
               }))
             }
             onKeyDown={e => {
@@ -103,6 +112,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
                   ...s,
                   activeLayerId: layer.id,
                   selectedShapeIds: [],
+                  selectedRasterLayerId: null,
                 }));
               }
             }}
