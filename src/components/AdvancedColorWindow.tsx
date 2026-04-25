@@ -355,7 +355,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
   if (!isOpen) return null;
 
   const { r: rgbR, g: rgbG, b: rgbB } = hsvToRgb(h, s, v);
-  const rgbCode = `rgb(${Math.round(rgbR)}, ${Math.round(rgbG)}, ${Math.round(rgbB)})`;
+  const rgbCode = `${Math.round(rgbR)}, ${Math.round(rgbG)}, ${Math.round(rgbB)}`;
 
   const panel = (
     <div
