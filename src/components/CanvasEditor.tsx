@@ -46,6 +46,10 @@ interface CanvasEditorProps {
   onPrepareImageUndo?: () => void;
   /** 맞춤 등에서 뷰 스크롤을 맨 위·왼쪽으로 맞출 때 증가 */
   scrollResetKey?: number;
+  /** true면 첫 드래그로 문서 좌표 영역을 지정해 캡처(클립보드) */
+  areaCaptureArmed?: boolean;
+  /** 드래그 종료 시 유효한 rect면 캡처, null이면 취소·무효 */
+  onAreaCaptureResult?: (rect: Rect | null) => void;
 }
 
 export const CanvasEditor: React.FC<CanvasEditorProps> = ({
@@ -57,6 +61,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   onLayersMutation,
   onPrepareImageUndo,
   scrollResetKey = 0,
+  areaCaptureArmed = false,
+  onAreaCaptureResult,
 }) => {
   const getShapeCommitLabel = useCallback((tool: EditorState['tool']) => {
     switch (tool) {
@@ -122,6 +128,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
+  const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
+  const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
+  const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
+
   /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
   const [hoveringShape, setHoveringShape] = useState(false);
   /** 선택 도구에서 핸들 위 호버 상태 (커서 피드백용) */
@@ -206,6 +216,33 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (state.tool !== 'polyline') setPolyHover(null);
     if (state.tool !== 'select') setHoveringShape(false);
   }, [state.tool]);
+
+  useEffect(() => {
+    if (!areaCaptureArmed) {
+      areaCaptureDragRef.current = null;
+      setCaptureDraftRect(null);
+    }
+  }, [areaCaptureArmed]);
+
+  useEffect(() => {
+    if (!areaCaptureArmed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      areaCaptureDragRef.current = null;
+      setCaptureDraftRect(null);
+      onAreaCaptureResult?.(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [areaCaptureArmed, onAreaCaptureResult]);
 
   const isEditableTarget = (t: EventTarget | null) =>
     t instanceof HTMLInputElement ||
@@ -462,6 +499,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ctx.setLineDash([]);
     }
 
+    if (captureDraftRect && (captureDraftRect.width > 0 || captureDraftRect.height > 0)) {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2 / state.zoom;
+      ctx.setLineDash([6 / state.zoom, 4 / state.zoom]);
+      ctx.strokeRect(
+        captureDraftRect.x,
+        captureDraftRect.y,
+        captureDraftRect.width,
+        captureDraftRect.height
+      );
+      ctx.setLineDash([]);
+    }
+
     if (state.selectedShapeIds.length > 0) {
       const selectedSet = new Set(state.selectedShapeIds);
       const isSingle = state.selectedShapeIds.length === 1;
@@ -540,7 +590,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
 
     ctx.restore();
-  }, [state, polyHover]);
+  }, [state, polyHover, captureDraftRect]);
 
   useLayoutEffect(() => {
     drawRef.current = draw;
@@ -760,6 +810,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
+
+    if (areaCaptureArmed && e.button === 0 && !e.altKey && documentHasRaster(state.layers)) {
+      const imgPos = toImageCoords(pos);
+      areaCaptureDragRef.current = { start: imgPos };
+      lastImgPosRef.current = imgPos;
+      setCaptureDraftRect({ x: imgPos.x, y: imgPos.y, width: 0, height: 0 });
+      return;
+    }
+
     setDragStart(pos);
 
     if (e.button === 1 || (e.button === 0 && e.altKey && !(state.tool === 'select' && state.selectedShapeIds.length === 1))) {
@@ -900,6 +959,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
+    const imgPos = toImageCoords(pos);
+    lastImgPosRef.current = imgPos;
+
+    if (areaCaptureDragRef.current && areaCaptureArmed) {
+      const st = areaCaptureDragRef.current.start;
+      setCaptureDraftRect({
+        x: Math.min(st.x, imgPos.x),
+        y: Math.min(st.y, imgPos.y),
+        width: Math.abs(imgPos.x - st.x),
+        height: Math.abs(imgPos.y - st.y),
+      });
+      return;
+    }
 
     if (resizeStateRef.current) {
       const current = toImageCoords(pos);
@@ -1058,6 +1130,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (areaCaptureDragRef.current && areaCaptureArmed) {
+      const start = areaCaptureDragRef.current.start;
+      areaCaptureDragRef.current = null;
+      const cur = lastImgPosRef.current;
+      setCaptureDraftRect(null);
+      const rect: Rect = {
+        x: Math.min(start.x, cur.x),
+        y: Math.min(start.y, cur.y),
+        width: Math.abs(cur.x - start.x),
+        height: Math.abs(cur.y - start.y),
+      };
+      const valid = rect.width >= 2 && rect.height >= 2 ? rect : null;
+      onAreaCaptureResult?.(valid);
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+
     if (resizeStateRef.current) {
       const { snapshotBefore, hasMoved } = resizeStateRef.current;
       resizeStateRef.current = null;
@@ -1196,7 +1286,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ref={viewportRef}
       className={cn(
         'flex-1 min-h-0 bg-neutral-900 overflow-auto relative transition-colors touch-none',
-        state.tool === 'fill'
+        areaCaptureArmed
+          ? 'cursor-crosshair'
+          : state.tool === 'fill'
           ? 'cursor-paint-bucket'
           : state.tool === 'text'
             ? 'cursor-text'
@@ -1260,6 +1352,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         handleMouseUp();
       }}
     >
+      {areaCaptureArmed && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 max-w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 rounded-md border border-amber-600/40 bg-amber-950/95 px-3 py-1.5 text-center text-[11px] leading-snug text-amber-100 shadow-md">
+          <span className="font-semibold text-amber-50">영역 드래그 캡처</span>
+          <span className="text-amber-200/95"> · 문서 위에서 드래그 후 놓기 · Esc 취소 · 도구 다시 눌러 종료</span>
+        </div>
+      )}
       <div className="relative pointer-events-none" style={{ width: contentW, height: contentH }}>
         <div
           className="sticky top-0 left-0 z-10 pointer-events-auto"

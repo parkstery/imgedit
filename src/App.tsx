@@ -25,6 +25,11 @@ import {
   writeFillTolerance,
   writeFillIgnoreAlpha,
 } from './lib/fillToolStorage';
+import {
+  createCompositeCanvas,
+  cropCanvasToRegion,
+  writeCanvasToClipboardPng,
+} from './lib/documentCapture';
 
 const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   zoom: 1,
@@ -96,6 +101,8 @@ export default function App() {
   const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
   /** 캔버스 영역 스크롤을 초기화할 때 증가 (맞춤 등) */
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
+  /** 툴바「영역 캡처」: 캔버스에서 드래그로 문서 좌표 영역 지정 */
+  const [areaCaptureArmed, setAreaCaptureArmed] = useState(false);
 
   // Initialize with a blank white canvas (1번 레이어에 래스터 귀속)
   useEffect(() => {
@@ -533,21 +540,9 @@ export default function App() {
   };
 
   const getSelectionCanvas = useCallback((rect: Rect): HTMLCanvasElement | null => {
-    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
-    const full = document.createElement('canvas');
-    full.width = dw;
-    full.height = dh;
-    const fctx = full.getContext('2d');
-    if (!fctx) return null;
-    drawLayerStackToContext(fctx, state.layers, dw, dh);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-    ctx.drawImage(full, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
-    return canvas;
+    const full = createCompositeCanvas(state.layers);
+    if (!full) return null;
+    return cropCanvasToRegion(full, rect);
   }, [state.layers]);
 
   const handleCopy = useCallback(async () => {
@@ -573,6 +568,55 @@ export default function App() {
       }, 'image/png');
     });
   }, [state.selection, state.layers, getSelectionCanvas]);
+
+  const handleCaptureSelection = useCallback(async () => {
+    const sel = state.selection;
+    if (
+      !sel ||
+      sel.width < 2 ||
+      sel.height < 2 ||
+      !documentHasRaster(state.layers)
+    ) {
+      return;
+    }
+    const canvas = getSelectionCanvas(sel);
+    if (!canvas) return;
+    try {
+      await writeCanvasToClipboardPng(canvas);
+    } catch (err) {
+      console.error('선택 영역 캡처 실패:', err);
+    }
+  }, [state.selection, state.layers, getSelectionCanvas]);
+
+  const handleCaptureFullDocument = useCallback(async () => {
+    if (!documentHasRaster(state.layers)) return;
+    const full = createCompositeCanvas(state.layers);
+    if (!full) return;
+    try {
+      await writeCanvasToClipboardPng(full);
+    } catch (err) {
+      console.error('전체 문서 캡처 실패:', err);
+    }
+  }, [state.layers]);
+
+  const handleAreaCaptureResult = useCallback(
+    async (rect: Rect | null) => {
+      setAreaCaptureArmed(false);
+      if (!rect || rect.width < 2 || rect.height < 2 || !documentHasRaster(state.layers)) {
+        return;
+      }
+      const full = createCompositeCanvas(state.layers);
+      if (!full) return;
+      const cropped = cropCanvasToRegion(full, rect);
+      if (!cropped) return;
+      try {
+        await writeCanvasToClipboardPng(cropped);
+      } catch (err) {
+        console.error('영역 캡처 실패:', err);
+      }
+    },
+    [state.layers],
+  );
 
   const handleCut = useCallback(async () => {
     if (!state.selection || !documentHasRaster(state.layers)) return;
@@ -867,6 +911,10 @@ export default function App() {
         onCopy={handleCopy}
         onCut={handleCut}
         onPaste={handlePaste}
+        areaCaptureArmed={areaCaptureArmed}
+        onToggleAreaCapture={() => setAreaCaptureArmed(a => !a)}
+        onCaptureSelection={handleCaptureSelection}
+        onCaptureFullDocument={handleCaptureFullDocument}
       />
       
       <main className="flex-1 flex overflow-hidden min-h-0">
@@ -881,6 +929,8 @@ export default function App() {
           onLayersMutation={handleLayersMutation}
           onPrepareImageUndo={handlePrepareImageUndoForPaint}
           scrollResetKey={canvasScrollResetKey}
+          areaCaptureArmed={areaCaptureArmed}
+          onAreaCaptureResult={handleAreaCaptureResult}
         />
         <LayersPanel state={state} setState={setState} />
       </main>

@@ -22,6 +22,9 @@ import {
   PaintBucket,
   Palette,
   Type,
+  Frame,
+  Crop,
+  Monitor,
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -124,6 +127,13 @@ interface ToolbarProps {
   onCopy: () => void;
   onCut: () => void;
   onPaste: (clipboardData?: any, asNew?: boolean) => void;
+  /** 문서 합성 기준: 선택 박스 영역을 PNG로 클립보드에 복사 */
+  onCaptureSelection: () => void;
+  /** 영역 드래그 캡처 모드 토글(캔버스에서 지정) */
+  onToggleAreaCapture: () => void;
+  /** 전체 문서(합성)를 PNG로 클립보드에 복사 */
+  onCaptureFullDocument: () => void;
+  areaCaptureArmed: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -151,7 +161,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onClearShapes,
   onCopy,
   onCut,
-  onPaste
+  onPaste,
+  onCaptureSelection,
+  onToggleAreaCapture,
+  onCaptureFullDocument,
+  areaCaptureArmed,
 }) => {
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
   const advancedColorAnchorRef = useRef<HTMLButtonElement>(null);
@@ -167,6 +181,31 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onSaveAs} icon={<Download size={18} />} label="다른 이름으로 저장" disabled={!documentHasRaster(state.layers)} />
         <ToolbarButton onClick={onResize} icon={<Scale size={18} />} label="이미지 크기 조절" disabled={!documentHasRaster(state.layers)} />
         <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!documentHasRaster(state.layers)} />
+        <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
+        <ToolbarButton
+          onClick={onCaptureSelection}
+          icon={<Frame size={18} strokeWidth={1.75} />}
+          label="선택 영역 캡처(클립보드)"
+          disabled={
+            !documentHasRaster(state.layers) ||
+            !state.selection ||
+            state.selection.width < 2 ||
+            state.selection.height < 2
+          }
+        />
+        <ToolbarButton
+          onClick={onToggleAreaCapture}
+          icon={<Crop size={18} strokeWidth={1.75} />}
+          label="영역 드래그 캡처(클립보드) — 캔버스에서 드래그"
+          disabled={!documentHasRaster(state.layers)}
+          active={areaCaptureArmed}
+        />
+        <ToolbarButton
+          onClick={onCaptureFullDocument}
+          icon={<Monitor size={18} strokeWidth={1.75} />}
+          label="전체 문서 캡처(클립보드)"
+          disabled={!documentHasRaster(state.layers)}
+        />
       </div>
 
       <div className="flex items-center gap-0.5 px-2 border-r border-neutral-700">
