@@ -6,15 +6,30 @@ export function isDisplayMediaSupported(): boolean {
   );
 }
 
+function getDisplayMediaOpts(): DisplayMediaStreamOptions {
+  const opts: any = {
+    video: { frameRate: { ideal: 30 } },
+    audio: false,
+  };
+  // Chromium 전용 힌트: 현재 탭보다 외부 창/화면을 우선하도록 유도
+  opts.preferCurrentTab = false;
+  opts.selfBrowserSurface = 'exclude';
+  opts.surfaceSwitching = 'include';
+  return opts as DisplayMediaStreamOptions;
+}
+
+export async function startDisplayCaptureStream(): Promise<MediaStream | null> {
+  if (!isDisplayMediaSupported()) return null;
+  return navigator.mediaDevices.getDisplayMedia(getDisplayMediaOpts());
+}
+
 /**
  * OS 공유 UI에서 소스를 고른 뒤 한 프레임을 캔버스로 만듭니다. 스트림은 즉시 종료됩니다.
  */
 export async function captureDisplayOnceToCanvas(): Promise<HTMLCanvasElement | null> {
   if (!isDisplayMediaSupported()) return null;
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 30 } } as MediaTrackConstraints,
-    audio: false,
-  });
+  const stream = await startDisplayCaptureStream();
+  if (!stream) return null;
   try {
     const video = document.createElement('video');
     video.playsInline = true;

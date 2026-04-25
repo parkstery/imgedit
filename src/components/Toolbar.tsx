@@ -208,6 +208,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton
           onClick={e => {
             if (displayMediaSupported && e.shiftKey) {
+              onToggleAreaCapture();
+              return;
+            }
+            if (displayMediaSupported) {
               void onScreenRegionCapture();
               return;
             }
@@ -216,7 +220,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<Crop size={18} strokeWidth={1.75} />}
           label={
             displayMediaSupported
-              ? '캔버스에서 영역 드래그 캡처 · Shift+클릭: 화면·창에서 영역'
+              ? '화면·창에서 영역 드래그 캡처 · Shift+클릭: 문서 캔버스 영역'
               : '캔버스에서 영역 드래그 캡처(클립보드)'
           }
           disabled={!displayMediaSupported && !documentHasRaster(state.layers)}

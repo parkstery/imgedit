@@ -34,6 +34,7 @@ import {
 import {
   captureDisplayOnceToCanvas,
   isDisplayMediaSupported,
+  startDisplayCaptureStream,
   stopMediaStream,
 } from './lib/screenCapture';
 
@@ -124,10 +125,8 @@ export default function App() {
   const beginScreenRegionCapture = useCallback(async () => {
     if (!isDisplayMediaSupported()) return;
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      });
+      const stream = await startDisplayCaptureStream();
+      if (!stream) return;
       setScreenRegionStream(stream);
     } catch (err) {
       console.warn('화면 공유가 취소되었거나 사용할 수 없습니다.', err);
