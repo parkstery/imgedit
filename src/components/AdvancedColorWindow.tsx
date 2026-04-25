@@ -374,9 +374,6 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
 
   if (!isOpen) return null;
 
-  const { r: rgbR, g: rgbG, b: rgbB } = hsvToRgb(h, s, v);
-  const rgbCode = `${Math.round(rgbR)}, ${Math.round(rgbG)}, ${Math.round(rgbB)}`;
-
   const panel = (
     <div
       ref={panelRef}
@@ -496,16 +493,6 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
                 spellCheck={false}
                 className="min-w-0 flex-1 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <div className="shrink-0 pb-0.5 text-right">
-                <div className="text-[8px] font-medium uppercase leading-none text-neutral-500">RGB</div>
-                <div
-                  className="font-mono text-[11px] text-neutral-200 tabular-nums leading-tight"
-                  title={rgbCode}
-                  aria-live="polite"
-                >
-                  {rgbCode}
-                </div>
-              </div>
             </div>
             {eyeDropperSupported ? (
               <button
