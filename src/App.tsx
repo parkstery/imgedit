@@ -32,7 +32,9 @@ import {
   writeCanvasToClipboardPng,
 } from './lib/documentCapture';
 import {
+  captureFrameFromStream,
   captureDisplayOnceToCanvas,
+  hasLiveVideoTrack,
   isDisplayMediaSupported,
   startDisplayCaptureStream,
   stopMediaStream,
@@ -110,28 +112,39 @@ export default function App() {
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
   /** 툴바「영역 캡처」: 캔버스에서 드래그로 문서 좌표 영역 지정 */
   const [areaCaptureArmed, setAreaCaptureArmed] = useState(false);
-  /** getDisplayMedia 후 전체 화면에서 드래그로 자르기 */
-  const [screenRegionStream, setScreenRegionStream] = useState<MediaStream | null>(null);
+  /** getDisplayMedia 스트림 캐시(첫 승인 후 재사용) */
+  const [screenCaptureStream, setScreenCaptureStream] = useState<MediaStream | null>(null);
+  /** 공유 화면 위 드래그 오버레이 표시 여부 */
+  const [screenRegionOverlayOpen, setScreenRegionOverlayOpen] = useState(false);
 
   const displayMediaSupported = isDisplayMediaSupported();
 
-  const clearScreenRegionStream = useCallback(() => {
-    setScreenRegionStream(prev => {
-      stopMediaStream(prev);
+  const ensureScreenCaptureStream = useCallback(async (): Promise<MediaStream | null> => {
+    if (hasLiveVideoTrack(screenCaptureStream)) return screenCaptureStream;
+    if (!isDisplayMediaSupported()) return null;
+    try {
+      const stream = await startDisplayCaptureStream();
+      if (!stream) return null;
+      setScreenCaptureStream(stream);
+      return stream;
+    } catch (err) {
+      console.warn('화면 공유가 취소되었거나 사용할 수 없습니다.', err);
       return null;
-    });
-  }, []);
+    }
+  }, [screenCaptureStream]);
 
   const beginScreenRegionCapture = useCallback(async () => {
     if (!isDisplayMediaSupported()) return;
-    try {
-      const stream = await startDisplayCaptureStream();
-      if (!stream) return;
-      setScreenRegionStream(stream);
-    } catch (err) {
-      console.warn('화면 공유가 취소되었거나 사용할 수 없습니다.', err);
-    }
-  }, []);
+    const stream = await ensureScreenCaptureStream();
+    if (!stream) return;
+    setScreenRegionOverlayOpen(true);
+  }, [ensureScreenCaptureStream]);
+
+  useEffect(() => {
+    return () => {
+      stopMediaStream(screenCaptureStream);
+    };
+  }, [screenCaptureStream]);
 
   // Initialize with a blank white canvas (1번 레이어에 래스터 귀속)
   useEffect(() => {
@@ -626,7 +639,10 @@ export default function App() {
   const handleCaptureFullDocument = useCallback(async () => {
     if (isDisplayMediaSupported()) {
       try {
-        const canvas = await captureDisplayOnceToCanvas();
+        const stream = await ensureScreenCaptureStream();
+        const canvas = stream
+          ? await captureFrameFromStream(stream)
+          : await captureDisplayOnceToCanvas();
         if (canvas) await writeCanvasToClipboardPng(canvas);
       } catch (err) {
         console.error('화면 전체 캡처 실패:', err);
@@ -641,7 +657,7 @@ export default function App() {
     } catch (err) {
       console.error('전체 문서 캡처 실패:', err);
     }
-  }, [state.layers]);
+  }, [state.layers, ensureScreenCaptureStream]);
 
   const handleAreaCaptureResult = useCallback(
     async (rect: Rect | null) => {
@@ -1012,18 +1028,19 @@ export default function App() {
 
       <StatusBar state={state} />
 
-      {screenRegionStream && (
+      {screenRegionOverlayOpen && screenCaptureStream && (
         <ScreenRegionOverlay
-          stream={screenRegionStream}
+          stream={screenCaptureStream}
+          keepStreamAlive
           onComplete={async canvas => {
-            setScreenRegionStream(null);
+            setScreenRegionOverlayOpen(false);
             try {
               await writeCanvasToClipboardPng(canvas);
             } catch (err) {
               console.error('화면 영역 클립보드 실패:', err);
             }
           }}
-          onCancel={clearScreenRegionStream}
+          onCancel={() => setScreenRegionOverlayOpen(false)}
         />
       )}
     </div>

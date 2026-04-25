@@ -7,6 +7,7 @@ interface ScreenRegionOverlayProps {
   stream: MediaStream;
   onComplete: (canvas: HTMLCanvasElement) => void;
   onCancel: () => void;
+  keepStreamAlive?: boolean;
 }
 
 /** 공유된 화면 위에서 드래그한 직사각형만 잘라 PNG 소스 캔버스로 넘깁니다. */
@@ -14,6 +15,7 @@ export const ScreenRegionOverlay: React.FC<ScreenRegionOverlayProps> = ({
   stream,
   onComplete,
   onCancel,
+  keepStreamAlive = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -95,7 +97,7 @@ export const ScreenRegionOverlay: React.FC<ScreenRegionOverlayProps> = ({
     if (!d) return;
     const crop = clientToVideoCrop(d.start.x, d.start.y, e.clientX, e.clientY);
     if (!crop || crop.sw < 2 || crop.sh < 2) {
-      stopMediaStream(stream);
+      if (!keepStreamAlive) stopMediaStream(stream);
       onCancel();
       return;
     }
@@ -106,7 +108,7 @@ export const ScreenRegionOverlay: React.FC<ScreenRegionOverlayProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(crop.video, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
-    stopMediaStream(stream);
+    if (!keepStreamAlive) stopMediaStream(stream);
     onComplete(canvas);
   };
 
