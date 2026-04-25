@@ -40,6 +40,21 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${c(r)}${c(g)}${c(b)}`;
 }
 
+/** "R, G, B" 또는 "R G B" 형태 파싱 */
+function parseRgbTriplet(input: string): { r: number; g: number; b: number } | null {
+  const parts = input
+    .trim()
+    .split(/[,，\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (parts.length !== 3) return null;
+  const r = parseInt(parts[0], 10);
+  const g = parseInt(parts[1], 10);
+  const b = parseInt(parts[2], 10);
+  if ([r, g, b].some(n => Number.isNaN(n) || n < 0 || n > 255)) return null;
+  return { r, g, b };
+}
+
 function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
   r /= 255;
   g /= 255;
@@ -132,6 +147,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
   const [s, setS] = useState(1);
   const [v, setV] = useState(1);
   const [hexInput, setHexInput] = useState('#ffffff');
+  const [rgbInput, setRgbInput] = useState('255, 255, 255');
   const [position, setPosition] = useState({ x: 16, y: 72 });
   const positionRef = useRef(position);
   positionRef.current = position;
@@ -153,7 +169,9 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
       setS(ss);
       setV(vv);
       const hex = hsvToHex(hh, ss, vv);
+      const { r, g, b } = hsvToRgb(hh, ss, vv);
       setHexInput(hex);
+      setRgbInput(`${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}`);
       onColorChange(hex);
     },
     [onColorChange]
@@ -220,6 +238,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
         setS(hsv.s);
         setV(hsv.v);
         setHexInput(normalizeHex(color) ?? hsvToHex(hsv.h, hsv.s, hsv.v));
+        setRgbInput(`${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}`);
         queueMicrotask(() => drawWheelCanvas());
         return;
       }
@@ -339,6 +358,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
           setS(hsv.s);
           setV(hsv.v);
           setHexInput(hex);
+          setRgbInput(`${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}`);
           onColorChange(hex);
           setEyedropperActive(true);
         }
@@ -438,61 +458,115 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <label className="text-[9px] text-neutral-400 shrink-0" htmlFor="adv-color-hex">
-            HEX
-          </label>
-          <input
-            id="adv-color-hex"
-            type="text"
-            value={hexInput}
-            onChange={e => {
-              const raw = e.target.value;
-              setHexInput(raw);
-              const n = normalizeHex(raw);
-              if (n) {
-                const rgb = hexToRgb(n);
-                if (rgb) {
-                  const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-end gap-1.5">
+            <div className="flex min-w-0 flex-1 items-end gap-1.5">
+              <label className="text-[9px] text-neutral-400 shrink-0 pb-1" htmlFor="adv-color-hex">
+                HEX
+              </label>
+              <input
+                id="adv-color-hex"
+                type="text"
+                value={hexInput}
+                onChange={e => {
+                  const raw = e.target.value;
+                  setHexInput(raw);
+                  const n = normalizeHex(raw);
+                  if (n) {
+                    const rgb = hexToRgb(n);
+                    if (rgb) {
+                      const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+                      setH(hsv.h);
+                      setS(hsv.s);
+                      setV(hsv.v);
+                      setRgbInput(`${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}`);
+                      onColorChange(n);
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  const n = normalizeHex(hexInput);
+                  const resolved = n ?? hsvToHex(h, s, v);
+                  setHexInput(resolved);
+                  const rgb = hexToRgb(resolved);
+                  if (rgb) {
+                    setRgbInput(`${Math.round(rgb.r)}, ${Math.round(rgb.g)}, ${Math.round(rgb.b)}`);
+                  }
+                }}
+                spellCheck={false}
+                className="min-w-0 flex-1 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <div className="shrink-0 pb-0.5 text-right">
+                <div className="text-[8px] font-medium uppercase leading-none text-neutral-500">RGB</div>
+                <div
+                  className="font-mono text-[11px] text-neutral-200 tabular-nums leading-tight"
+                  title={rgbCode}
+                  aria-live="polite"
+                >
+                  {rgbCode}
+                </div>
+              </div>
+            </div>
+            {eyeDropperSupported ? (
+              <button
+                type="button"
+                disabled={eyedropperBusy}
+                onClick={() => void runEyedropper()}
+                title="화면에서 색 추출. 색을 고른 뒤에도 버튼은 활성으로 유지되며, 누를 때마다 다시 스포이드를 사용할 수 있습니다."
+                aria-pressed={eyedropperActive}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1 rounded border bg-neutral-900 px-1.5 py-1 text-[10px] font-medium',
+                  'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  eyedropperActive
+                    ? 'border-blue-400 bg-blue-950/50 text-blue-100 ring-1 ring-blue-500/60'
+                    : 'border-neutral-600 text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500',
+                  'disabled:opacity-50 disabled:pointer-events-none'
+                )}
+              >
+                <Pipette size={12} className="shrink-0" aria-hidden />
+                스포이드
+              </button>
+            ) : (
+              <span className="text-[9px] text-neutral-500">스포이드는 Chrome·Edge 등에서 지원됩니다.</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <label className="text-[9px] text-neutral-400 shrink-0" htmlFor="adv-color-rgb-input">
+              RGB
+            </label>
+            <input
+              id="adv-color-rgb-input"
+              type="text"
+              value={rgbInput}
+              onChange={e => {
+                const raw = e.target.value;
+                setRgbInput(raw);
+                const parsed = parseRgbTriplet(raw);
+                if (parsed) {
+                  const hsv = rgbToHsv(parsed.r, parsed.g, parsed.b);
                   setH(hsv.h);
                   setS(hsv.s);
                   setV(hsv.v);
-                  onColorChange(n);
+                  const hex = rgbToHex(parsed.r, parsed.g, parsed.b);
+                  setHexInput(hex);
+                  onColorChange(hex);
                 }
-              }
-            }}
-            onBlur={() => {
-              const n = normalizeHex(hexInput);
-              if (n) setHexInput(n);
-              else {
-                setHexInput(hsvToHex(h, s, v));
-              }
-            }}
-            spellCheck={false}
-            className="flex-1 min-w-[4.5rem] rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          {eyeDropperSupported ? (
-            <button
-              type="button"
-              disabled={eyedropperBusy}
-              onClick={() => void runEyedropper()}
-              title="화면에서 색 추출. 색을 고른 뒤에도 버튼은 활성으로 유지되며, 누를 때마다 다시 스포이드를 사용할 수 있습니다."
-              aria-pressed={eyedropperActive}
-              className={cn(
-                'inline-flex items-center gap-1 rounded border bg-neutral-900 px-1.5 py-1 text-[10px] font-medium',
-                'focus:outline-none focus:ring-2 focus:ring-blue-500',
-                eyedropperActive
-                  ? 'border-blue-400 bg-blue-950/50 text-blue-100 ring-1 ring-blue-500/60'
-                  : 'border-neutral-600 text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500',
-                'disabled:opacity-50 disabled:pointer-events-none'
-              )}
-            >
-              <Pipette size={12} className="shrink-0" aria-hidden />
-              스포이드
-            </button>
-          ) : (
-            <span className="text-[9px] text-neutral-500">스포이드는 Chrome·Edge 등에서 지원됩니다.</span>
-          )}
+              }}
+              onBlur={() => {
+                const parsed = parseRgbTriplet(rgbInput);
+                if (parsed) {
+                  setRgbInput(`${parsed.r}, ${parsed.g}, ${parsed.b}`);
+                } else {
+                  const { r, g, b } = hsvToRgb(h, s, v);
+                  setRgbInput(`${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}`);
+                }
+              }}
+              spellCheck={false}
+              placeholder="0–255, 0–255, 0–255"
+              className="min-w-0 flex-1 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -501,12 +575,6 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             style={{ backgroundColor: hsvToHex(h, s, v) }}
             title="미리보기"
           />
-          <div className="min-w-0 flex-1">
-            <span className="text-[9px] font-medium text-neutral-400">RGB</span>
-            <p className="font-mono text-[11px] text-neutral-200 tabular-nums leading-snug truncate" title={rgbCode}>
-              {rgbCode}
-            </p>
-          </div>
         </div>
       </div>
     </div>
