@@ -132,12 +132,8 @@ interface ToolbarProps {
   onCaptureSelection: () => void;
   /** 영역 드래그 캡처 모드 토글(캔버스에서 지정) */
   onToggleAreaCapture: () => void;
-  /** 화면 공유 한 프레임(전체) 또는 미지원 시 문서 합성 전체 */
+  /** 문서 합성 전체를 PNG로 클립보드에 복사 */
   onCaptureFullDocument: () => void;
-  /** getDisplayMedia 사용 가능(Chromium 등) */
-  displayMediaSupported: boolean;
-  /** 화면·창 공유 후 드래그로 영역 지정 */
-  onScreenRegionCapture: () => void | Promise<void>;
   areaCaptureArmed: boolean;
 }
 
@@ -170,8 +166,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCaptureSelection,
   onToggleAreaCapture,
   onCaptureFullDocument,
-  displayMediaSupported,
-  onScreenRegionCapture,
   areaCaptureArmed,
 }) => {
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
@@ -192,49 +186,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton
           onClick={() => void onCaptureSelection()}
           icon={<Frame size={18} strokeWidth={1.75} />}
-          label={
-            displayMediaSupported
-              ? '문서에 점선 선택이 있으면 그 영역 / 없으면 화면·창에서 영역 드래그 (클립보드)'
-              : '문서 점선 선택 영역을 클립보드로 (점선 선택 필요)'
-          }
+          label="문서 점선 선택 영역 캡처(클립보드)"
           disabled={
-            !displayMediaSupported &&
-            (!documentHasRaster(state.layers) ||
-              !state.selection ||
-              state.selection.width < 2 ||
-              state.selection.height < 2)
+            !documentHasRaster(state.layers) ||
+            !state.selection ||
+            state.selection.width < 2 ||
+            state.selection.height < 2
           }
         />
         <ToolbarButton
-          onClick={e => {
-            if (displayMediaSupported && e.shiftKey) {
-              onToggleAreaCapture();
-              return;
-            }
-            if (displayMediaSupported) {
-              void onScreenRegionCapture();
-              return;
-            }
-            onToggleAreaCapture();
-          }}
+          onClick={onToggleAreaCapture}
           icon={<Crop size={18} strokeWidth={1.75} />}
-          label={
-            displayMediaSupported
-              ? '화면·창에서 영역 드래그 캡처 · Shift+클릭: 문서 캔버스 영역'
-              : '캔버스에서 영역 드래그 캡처(클립보드)'
-          }
-          disabled={!displayMediaSupported && !documentHasRaster(state.layers)}
+          label="캔버스에서 영역 드래그 캡처(클립보드)"
+          disabled={!documentHasRaster(state.layers)}
           active={areaCaptureArmed}
         />
         <ToolbarButton
           onClick={() => void onCaptureFullDocument()}
           icon={<Monitor size={18} strokeWidth={1.75} />}
-          label={
-            displayMediaSupported
-              ? '화면·창 전체 한 장(공유 선택) — 미지원 브라우저에서는 문서 전체'
-              : '문서 합성 전체를 클립보드로'
-          }
-          disabled={!displayMediaSupported && !documentHasRaster(state.layers)}
+          label="문서 합성 전체를 클립보드로"
+          disabled={!documentHasRaster(state.layers)}
         />
       </div>
 
