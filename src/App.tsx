@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { CanvasEditor } from './components/CanvasEditor';
+import { ScreenRegionOverlay } from './components/ScreenRegionOverlay';
 import { StatusBar } from './components/StatusBar';
 import { TextDraftPanel } from './components/TextDraftPanel';
 import { LayersPanel } from './components/LayersPanel';
@@ -30,6 +31,11 @@ import {
   cropCanvasToRegion,
   writeCanvasToClipboardPng,
 } from './lib/documentCapture';
+import {
+  captureDisplayOnceToCanvas,
+  isDisplayMediaSupported,
+  stopMediaStream,
+} from './lib/screenCapture';
 
 const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   zoom: 1,
@@ -103,6 +109,30 @@ export default function App() {
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
   /** 툴바「영역 캡처」: 캔버스에서 드래그로 문서 좌표 영역 지정 */
   const [areaCaptureArmed, setAreaCaptureArmed] = useState(false);
+  /** getDisplayMedia 후 전체 화면에서 드래그로 자르기 */
+  const [screenRegionStream, setScreenRegionStream] = useState<MediaStream | null>(null);
+
+  const displayMediaSupported = isDisplayMediaSupported();
+
+  const clearScreenRegionStream = useCallback(() => {
+    setScreenRegionStream(prev => {
+      stopMediaStream(prev);
+      return null;
+    });
+  }, []);
+
+  const beginScreenRegionCapture = useCallback(async () => {
+    if (!isDisplayMediaSupported()) return;
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      setScreenRegionStream(stream);
+    } catch (err) {
+      console.warn('화면 공유가 취소되었거나 사용할 수 없습니다.', err);
+    }
+  }, []);
 
   // Initialize with a blank white canvas (1번 레이어에 래스터 귀속)
   useEffect(() => {
@@ -575,23 +605,35 @@ export default function App() {
   const handleCaptureSelection = useCallback(async () => {
     const sel = state.selection;
     if (
-      !sel ||
-      sel.width < 2 ||
-      sel.height < 2 ||
-      !documentHasRaster(state.layers)
+      sel &&
+      sel.width >= 2 &&
+      sel.height >= 2 &&
+      documentHasRaster(state.layers)
     ) {
+      const canvas = getSelectionCanvas(sel);
+      if (!canvas) return;
+      try {
+        await writeCanvasToClipboardPng(canvas);
+      } catch (err) {
+        console.error('선택 영역 캡처 실패:', err);
+      }
       return;
     }
-    const canvas = getSelectionCanvas(sel);
-    if (!canvas) return;
-    try {
-      await writeCanvasToClipboardPng(canvas);
-    } catch (err) {
-      console.error('선택 영역 캡처 실패:', err);
+    if (isDisplayMediaSupported()) {
+      await beginScreenRegionCapture();
     }
-  }, [state.selection, state.layers, getSelectionCanvas]);
+  }, [state.selection, state.layers, getSelectionCanvas, beginScreenRegionCapture]);
 
   const handleCaptureFullDocument = useCallback(async () => {
+    if (isDisplayMediaSupported()) {
+      try {
+        const canvas = await captureDisplayOnceToCanvas();
+        if (canvas) await writeCanvasToClipboardPng(canvas);
+      } catch (err) {
+        console.error('화면 전체 캡처 실패:', err);
+      }
+      return;
+    }
     if (!documentHasRaster(state.layers)) return;
     const full = createCompositeCanvas(state.layers);
     if (!full) return;
@@ -918,6 +960,8 @@ export default function App() {
         onToggleAreaCapture={() => setAreaCaptureArmed(a => !a)}
         onCaptureSelection={handleCaptureSelection}
         onCaptureFullDocument={handleCaptureFullDocument}
+        displayMediaSupported={displayMediaSupported}
+        onScreenRegionCapture={beginScreenRegionCapture}
       />
       
       <main className="flex-1 flex overflow-hidden min-h-0">
@@ -968,6 +1012,21 @@ export default function App() {
       />
 
       <StatusBar state={state} />
+
+      {screenRegionStream && (
+        <ScreenRegionOverlay
+          stream={screenRegionStream}
+          onComplete={async canvas => {
+            setScreenRegionStream(null);
+            try {
+              await writeCanvasToClipboardPng(canvas);
+            } catch (err) {
+              console.error('화면 영역 클립보드 실패:', err);
+            }
+          }}
+          onCancel={clearScreenRegionStream}
+        />
+      )}
     </div>
   );
 }

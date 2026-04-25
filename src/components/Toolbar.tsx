@@ -132,8 +132,12 @@ interface ToolbarProps {
   onCaptureSelection: () => void;
   /** 영역 드래그 캡처 모드 토글(캔버스에서 지정) */
   onToggleAreaCapture: () => void;
-  /** 전체 문서(합성)를 PNG로 클립보드에 복사 */
+  /** 화면 공유 한 프레임(전체) 또는 미지원 시 문서 합성 전체 */
   onCaptureFullDocument: () => void;
+  /** getDisplayMedia 사용 가능(Chromium 등) */
+  displayMediaSupported: boolean;
+  /** 화면·창 공유 후 드래그로 영역 지정 */
+  onScreenRegionCapture: () => void | Promise<void>;
   areaCaptureArmed: boolean;
 }
 
@@ -166,6 +170,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCaptureSelection,
   onToggleAreaCapture,
   onCaptureFullDocument,
+  displayMediaSupported,
+  onScreenRegionCapture,
   areaCaptureArmed,
 }) => {
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
@@ -184,28 +190,47 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!documentHasRaster(state.layers)} />
         <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
         <ToolbarButton
-          onClick={onCaptureSelection}
+          onClick={() => void onCaptureSelection()}
           icon={<Frame size={18} strokeWidth={1.75} />}
-          label="선택 영역 캡처(클립보드)"
+          label={
+            displayMediaSupported
+              ? '문서에 점선 선택이 있으면 그 영역 / 없으면 화면·창에서 영역 드래그 (클립보드)'
+              : '문서 점선 선택 영역을 클립보드로 (점선 선택 필요)'
+          }
           disabled={
-            !documentHasRaster(state.layers) ||
-            !state.selection ||
-            state.selection.width < 2 ||
-            state.selection.height < 2
+            !displayMediaSupported &&
+            (!documentHasRaster(state.layers) ||
+              !state.selection ||
+              state.selection.width < 2 ||
+              state.selection.height < 2)
           }
         />
         <ToolbarButton
-          onClick={onToggleAreaCapture}
+          onClick={e => {
+            if (displayMediaSupported && e.shiftKey) {
+              void onScreenRegionCapture();
+              return;
+            }
+            onToggleAreaCapture();
+          }}
           icon={<Crop size={18} strokeWidth={1.75} />}
-          label="영역 드래그 캡처(클립보드) — 캔버스에서 드래그"
-          disabled={!documentHasRaster(state.layers)}
+          label={
+            displayMediaSupported
+              ? '캔버스에서 영역 드래그 캡처 · Shift+클릭: 화면·창에서 영역'
+              : '캔버스에서 영역 드래그 캡처(클립보드)'
+          }
+          disabled={!displayMediaSupported && !documentHasRaster(state.layers)}
           active={areaCaptureArmed}
         />
         <ToolbarButton
-          onClick={onCaptureFullDocument}
+          onClick={() => void onCaptureFullDocument()}
           icon={<Monitor size={18} strokeWidth={1.75} />}
-          label="전체 문서 캡처(클립보드)"
-          disabled={!documentHasRaster(state.layers)}
+          label={
+            displayMediaSupported
+              ? '화면·창 전체 한 장(공유 선택) — 미지원 브라우저에서는 문서 전체'
+              : '문서 합성 전체를 클립보드로'
+          }
+          disabled={!displayMediaSupported && !documentHasRaster(state.layers)}
         />
       </div>
 
@@ -475,7 +500,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 };
 
 interface ToolbarButtonProps {
-  onClick: () => void;
+  onClick: React.MouseEventHandler<HTMLButtonElement>;
   icon: React.ReactNode;
   label: string;
   disabled?: boolean;
@@ -485,6 +510,7 @@ interface ToolbarButtonProps {
 
 const ToolbarButton: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, disabled, shortcut, active }) => (
   <button
+    type="button"
     onClick={onClick}
     disabled={disabled}
     title={shortcut ? `${label} (${shortcut})` : label}
