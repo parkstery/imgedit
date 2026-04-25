@@ -66,6 +66,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 }) => {
   const getShapeCommitLabel = useCallback((tool: EditorState['tool']) => {
     switch (tool) {
+      case 'marquee':
+        return '영역 선택';
       case 'line':
         return '선 그리기';
       case 'rect':
@@ -280,6 +282,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
       if (isEditableTarget(e.target)) return;
 
+      if (state.tool === 'marquee') {
+        if (e.key === 'Escape') {
+          if (state.selection || state.isSelecting) {
+            e.preventDefault();
+            setState(prev => ({ ...prev, selection: null, isSelecting: false }));
+            return;
+          }
+        }
+      }
+
       if (state.tool === 'select') {
         if (e.key === 'Escape') {
           if (state.selectedShapeIds.length > 0) {
@@ -390,6 +402,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     state.textDraft,
     state.selectedShapeIds,
     state.selectedRasterLayerId,
+    state.selection,
+    state.isSelecting,
     state.layers,
     state.activeLayerId,
     commitPolylineDraft,
@@ -512,7 +526,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ctx.setLineDash([]);
     }
 
-    if (state.selectedShapeIds.length > 0) {
+    if (state.tool === 'select' && state.selectedShapeIds.length > 0) {
       const selectedSet = new Set(state.selectedShapeIds);
       const isSingle = state.selectedShapeIds.length === 1;
       ctx.strokeStyle = '#22d3ee';
@@ -910,12 +924,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         } else {
           setState(prev => ({
             ...prev,
-            isSelecting: true,
-            selection: null,
             selectedShapeIds: [],
             selectedRasterLayerId: null,
+            isSelecting: false,
+            selection: null,
           }));
         }
+      } else if (state.tool === 'marquee' && documentHasRaster(state.layers)) {
+        setState(prev => ({
+          ...prev,
+          isSelecting: true,
+          selection: null,
+          selectedShapeIds: [],
+          selectedRasterLayerId: null,
+        }));
       } else if (state.tool === 'text' && documentHasRaster(state.layers)) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (al?.locked) return;
@@ -935,7 +957,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'polyline' &&
         state.tool !== 'freehand' &&
         state.tool !== 'fill' &&
-        state.tool !== 'text'
+        state.tool !== 'text' &&
+        state.tool !== 'select' &&
+        state.tool !== 'marquee'
       ) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (al?.locked) return;
@@ -1288,6 +1312,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         'flex-1 min-h-0 bg-neutral-900 overflow-auto relative transition-colors touch-none',
         areaCaptureArmed
           ? 'cursor-crosshair'
+          : state.tool === 'marquee'
+            ? 'cursor-crosshair'
           : state.tool === 'fill'
           ? 'cursor-paint-bucket'
           : state.tool === 'text'

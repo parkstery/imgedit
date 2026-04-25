@@ -10,7 +10,17 @@ export interface Rect {
   height: number;
 }
 
-export type Tool = 'select' | 'freehand' | 'line' | 'polyline' | 'rect' | 'ellipse' | 'fill' | 'text';
+export type Tool =
+  | 'select'
+  /** 파란 점선 사각형(복사·잘라내기·선택 캡처용 영역) */
+  | 'marquee'
+  | 'freehand'
+  | 'line'
+  | 'polyline'
+  | 'rect'
+  | 'ellipse'
+  | 'fill'
+  | 'text';
 
 export interface PolylineDraft {
   id: string;

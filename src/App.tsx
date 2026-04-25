@@ -311,12 +311,15 @@ export default function App() {
               fontSize: prev.textFontSize,
             }
           : null;
+      const keepPick =
+        tool === 'select' || tool === 'marquee';
       return {
         ...prev,
         tool,
-        selection: null,
-        selectedShapeIds: tool === 'select' ? prev.selectedShapeIds : [],
-        selectedRasterLayerId: tool === 'select' ? prev.selectedRasterLayerId : null,
+        selection: keepPick ? prev.selection : null,
+        isSelecting: false,
+        selectedShapeIds: keepPick ? prev.selectedShapeIds : [],
+        selectedRasterLayerId: keepPick ? prev.selectedRasterLayerId : null,
         polylineDraft: null,
         freehandDraft: null,
         textDraft,

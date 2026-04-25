@@ -22,6 +22,7 @@ import {
   PaintBucket,
   Palette,
   Type,
+  ArrowUpRight,
   Frame,
   Crop,
   Monitor,
@@ -209,11 +210,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       <div className="flex items-center gap-0.5 px-2 border-r border-neutral-700">
-        <ToolbarButton 
-          onClick={() => onToolChange('select')} 
-          icon={<SelectionBoxToolbarIcon size={18} />} 
-          label="선택 박스" 
+        <ToolbarButton
+          onClick={() => onToolChange('select')}
+          icon={<ArrowUpRight size={18} strokeWidth={2} />}
+          label="개체 선택 (도형·이미지)"
           active={state.tool === 'select'}
+        />
+        <ToolbarButton
+          onClick={() => onToolChange('marquee')}
+          icon={<SelectionBoxToolbarIcon size={18} />}
+          label="영역 선택 (점선 박스)"
+          active={state.tool === 'marquee'}
         />
         <ToolbarButton 
           onClick={() => onToolChange('freehand')} 
