@@ -93,6 +93,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  /** ResizeObserver 연속 호출을 프레임당 1회로 제한 */
+  const resizeRafRef = useRef<number | null>(null);
   /** 폴리라인: 마지막 점에서 커서까지 미리보기 */
   const [polyHover, setPolyHover] = useState<Point | null>(null);
   /** mouseup 직후 mouseleave가 한 번 더 오며 도형이 이중 커밋되는 것을 막음 */
@@ -615,7 +617,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const canvas = canvasRef.current;
     if (!el || !canvas) return;
 
-    const applySize = () => {
+    const applySizeNow = () => {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w <= 0 || h <= 0) return;
@@ -627,11 +629,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       scrollPosRef.current = { x: sx, y: sy };
       drawRef.current();
     };
+    const applySize = () => {
+      if (resizeRafRef.current != null) return;
+      resizeRafRef.current = requestAnimationFrame(() => {
+        resizeRafRef.current = null;
+        applySizeNow();
+      });
+    };
 
-    applySize();
+    applySizeNow();
     const ro = new ResizeObserver(applySize);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (resizeRafRef.current != null) {
+        cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -653,7 +668,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     el.scrollTo(0, 0);
     scrollPosRef.current = { x: 0, y: 0 };
     drawRef.current();
-  }, [state.layers, scrollResetKey]);
+  }, [scrollResetKey]);
 
   useEffect(() => {
     draw();
@@ -1295,13 +1310,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const vw = viewportSize.w;
   const vh = viewportSize.h;
   const { width: docW, height: docH } = getDocumentCanvasSize(state.layers);
-  const hasDoc = documentHasRaster(state.layers);
   const contentW =
-    hasDoc && vw > 0
+    vw > 0
       ? Math.max(vw, Math.ceil(state.position.x + docW * state.zoom + SCROLL_PAD))
       : Math.max(vw, 1);
   const contentH =
-    hasDoc && vh > 0
+    vh > 0
       ? Math.max(vh, Math.ceil(state.position.y + docH * state.zoom + SCROLL_PAD))
       : Math.max(vh, 1);
 
