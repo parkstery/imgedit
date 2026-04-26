@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { EditorState } from '../types';
 import { cn } from '../lib/utils';
 import { createEditorLayer } from '../lib/layers';
@@ -12,6 +12,8 @@ interface LayersPanelProps {
 /** 위쪽이 전경(상단 레이어)처럼 보이도록 역순 표시 */
 export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => {
   const ordered = [...state.layers].reverse();
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
   const addLayer = () => {
     setState(prev => {
@@ -64,6 +66,29 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
     }));
   };
 
+  const beginRename = (layerId: string, currentName: string) => {
+    setEditingLayerId(layerId);
+    setEditingName(currentName);
+  };
+
+  const commitRename = () => {
+    if (!editingLayerId) return;
+    const nextName = editingName.trim();
+    if (nextName.length > 0) {
+      setState(prev => ({
+        ...prev,
+        layers: prev.layers.map(l => (l.id === editingLayerId ? { ...l, name: nextName } : l)),
+      }));
+    }
+    setEditingLayerId(null);
+    setEditingName('');
+  };
+
+  const cancelRename = () => {
+    setEditingLayerId(null);
+    setEditingName('');
+  };
+
   return (
     <aside className="w-52 shrink-0 border-l border-neutral-800 bg-neutral-900/90 flex flex-col min-h-0">
       <div className="px-2 py-2 border-b border-neutral-800 flex items-center justify-between gap-1">
@@ -105,7 +130,9 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
                 selectedRasterLayerId: null,
               }))
             }
+            onDoubleClick={() => beginRename(layer.id, layer.name)}
             onKeyDown={e => {
+              if (editingLayerId === layer.id) return;
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 setState(s => ({
@@ -139,9 +166,36 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
             >
               {layer.locked ? <Lock size={13} /> : <LockOpen size={13} />}
             </button>
-            <span className="flex-1 min-w-0 truncate" title={layer.name}>
-              {layer.name}
-            </span>
+            {editingLayerId === layer.id ? (
+              <input
+                autoFocus
+                value={editingName}
+                onChange={e => setEditingName(e.target.value)}
+                onBlur={commitRename}
+                onClick={e => e.stopPropagation()}
+                onDoubleClick={e => e.stopPropagation()}
+                onKeyDown={e => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                className="flex-1 min-w-0 h-5 rounded border border-blue-600/60 bg-neutral-950 px-1 text-[11px] text-neutral-100 outline-none"
+                title="레이어 이름 변경"
+                maxLength={40}
+              />
+            ) : (
+              <span
+                className="flex-1 min-w-0 truncate"
+                title={`${layer.name} (더블클릭하여 이름 변경)`}
+              >
+                {layer.name}
+              </span>
+            )}
             <span className="text-[10px] text-neutral-500 tabular-nums shrink-0">{layer.shapes.length}</span>
           </div>
         ))}
