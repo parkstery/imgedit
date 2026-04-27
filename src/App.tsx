@@ -116,6 +116,31 @@ function remapShapePoints(shape: Shape, map: (p: Point) => Point): Shape {
   };
 }
 
+function newId(): string {
+  return Math.random().toString(36).slice(2, 11);
+}
+
+type InternalClipboardPayload =
+  | { kind: 'shapes'; entries: { layerId: string; shape: Shape }[] }
+  | { kind: 'raster'; image: HTMLImageElement; x: number; y: number; fileName: string | null }
+  | { kind: 'selection'; rect: Rect };
+
+async function cloneImageElement(src: HTMLImageElement): Promise<HTMLImageElement | null> {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, src.width);
+  c.height = Math.max(1, src.height);
+  const x = c.getContext('2d');
+  if (!x) return null;
+  x.drawImage(src, 0, 0);
+  const dataUrl = c.toDataURL();
+  return await new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
 export default function App() {
   const [state, setState] = useState<EditorState>(() => ({
     ...createFreshEditorState(),
@@ -135,6 +160,7 @@ export default function App() {
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
   /** 툴바「영역 캡처」: 캔버스에서 드래그로 문서 좌표 영역 지정 */
   const [areaCaptureArmed, setAreaCaptureArmed] = useState(false);
+  const internalClipboardRef = useRef<InternalClipboardPayload | null>(null);
 
   // Initialize with a blank white canvas (1번 레이어에 래스터 귀속)
   useEffect(() => {
@@ -740,29 +766,79 @@ export default function App() {
     return cropCanvasToRegion(full, rect);
   }, [state.layers]);
 
-  const handleCopy = useCallback(async () => {
-    if (!state.selection || !documentHasRaster(state.layers)) return;
-    const canvas = getSelectionCanvas(state.selection);
-    if (!canvas) return;
-
+  const copyCanvasToSystemClipboard = useCallback(async (canvas: HTMLCanvasElement) => {
     return new Promise<void>((resolve, reject) => {
       canvas.toBlob(async (blob) => {
-        if (blob) {
-          try {
-            const item = new ClipboardItem({ [blob.type]: blob });
-            await navigator.clipboard.write([item]);
-            console.log('Copied to clipboard');
-            resolve();
-          } catch (err) {
-            console.error('Failed to copy:', err);
-            reject(err);
-          }
-        } else {
+        if (!blob) {
           reject(new Error('Canvas to blob failed'));
+          return;
+        }
+        try {
+          const item = new ClipboardItem({ [blob.type]: blob });
+          await navigator.clipboard.write([item]);
+          resolve();
+        } catch (err) {
+          reject(err);
         }
       }, 'image/png');
     });
-  }, [state.selection, state.layers, getSelectionCanvas]);
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (!documentHasRaster(state.layers)) return;
+
+    if (state.selectedShapeIds.length > 0) {
+      const idSet = new Set(state.selectedShapeIds);
+      const entries: { layerId: string; shape: Shape }[] = [];
+      state.layers.forEach(layer => {
+        const picked = layer.shapes.filter(sh => idSet.has(sh.id)).map(cloneShapeDeep);
+        if (picked.length > 0) {
+          picked.forEach(shape => entries.push({ layerId: layer.id, shape }));
+        }
+      });
+      if (entries.length > 0) {
+        internalClipboardRef.current = { kind: 'shapes', entries };
+      }
+      return;
+    }
+
+    if (state.selectedRasterLayerId) {
+      const layer = state.layers.find(l => l.id === state.selectedRasterLayerId);
+      if (!layer?.image) return;
+      const cloned = await cloneImageElement(layer.image);
+      if (!cloned) return;
+      internalClipboardRef.current = {
+        kind: 'raster',
+        image: cloned,
+        x: layer.imageX ?? 0,
+        y: layer.imageY ?? 0,
+        fileName: layer.fileName,
+      };
+      const c = document.createElement('canvas');
+      c.width = cloned.width;
+      c.height = cloned.height;
+      const x = c.getContext('2d');
+      if (x) {
+        x.drawImage(cloned, 0, 0);
+        try {
+          await copyCanvasToSystemClipboard(c);
+        } catch {
+          // 내부 클립보드만으로도 붙여넣기는 동작.
+        }
+      }
+      return;
+    }
+
+    if (!state.selection) return;
+    const canvas = getSelectionCanvas(state.selection);
+    if (!canvas) return;
+    internalClipboardRef.current = { kind: 'selection', rect: { ...state.selection } };
+    try {
+      await copyCanvasToSystemClipboard(canvas);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }, [state, getSelectionCanvas, copyCanvasToSystemClipboard]);
 
   const handleCaptureSelection = useCallback(async () => {
     const sel = state.selection;
@@ -846,6 +922,79 @@ export default function App() {
       console.error('Cut failed:', err);
     }
   }, [state.selection, state.layers, handleCopy]);
+
+  const pasteFromInternalClipboard = useCallback(async (): Promise<boolean> => {
+    const payload = internalClipboardRef.current;
+    if (!payload) return false;
+    const s = stateRef.current;
+
+    if (payload.kind === 'shapes') {
+      const before = cloneLayersDeep(s.layers);
+      const dx = 20;
+      const dy = 20;
+      const copiedByLayer = new Map<string, Shape[]>();
+      payload.entries.forEach(({ layerId }) => {
+        if (!copiedByLayer.has(layerId)) copiedByLayer.set(layerId, []);
+      });
+      payload.entries.forEach(({ layerId, shape }) => {
+        const mapped = remapShapePoints(cloneShapeDeep(shape), (p) => ({ x: p.x + dx, y: p.y + dy }));
+        mapped.id = newId();
+        const targetLayerId = s.layers.some(l => l.id === layerId) ? layerId : s.activeLayerId;
+        if (!copiedByLayer.has(targetLayerId)) copiedByLayer.set(targetLayerId, []);
+        copiedByLayer.get(targetLayerId)!.push(mapped);
+      });
+      const insertedIds = Array.from(copiedByLayer.values()).flat().map(sh => sh.id);
+      setState(prev => ({
+        ...prev,
+        tool: 'select',
+        layers: prev.layers.map(layer => {
+          const add = copiedByLayer.get(layer.id) ?? [];
+          if (add.length === 0) return layer;
+          return { ...layer, shapes: [...layer.shapes, ...add] };
+        }),
+        selectedShapeIds: insertedIds,
+        selectedRasterLayerId: null,
+        selection: null,
+      }));
+      handleLayersMutation(before, s.activeLayerId, '도형 붙여넣기');
+      return true;
+    }
+
+    if (payload.kind === 'raster') {
+      const cloned = await cloneImageElement(payload.image);
+      if (!cloned) return false;
+      const before = cloneLayersDeep(s.layers);
+      setState(prev => {
+        const L = createEditorLayer(`레이어 ${prev.layers.length + 1}`);
+        return {
+          ...prev,
+          tool: 'select',
+          layers: [
+            ...prev.layers,
+            {
+              ...L,
+              image: cloned,
+              fileName: payload.fileName ?? 'pasted-image.png',
+              imageX: payload.x + 20,
+              imageY: payload.y + 20,
+            },
+          ],
+          activeLayerId: L.id,
+          selectedShapeIds: [],
+          selectedRasterLayerId: L.id,
+          selection: null,
+        };
+      });
+      handleLayersMutation(before, s.activeLayerId, '이미지 붙여넣기');
+      return true;
+    }
+
+    if (payload.kind === 'selection') {
+      setState(prev => ({ ...prev, selection: { ...payload.rect }, tool: 'marquee' }));
+      return false;
+    }
+    return false;
+  }, [handleLayersMutation]);
 
   const processPastedImage = useCallback((img: HTMLImageElement, asNew: boolean = false) => {
     const s = stateRef.current;
@@ -977,6 +1126,11 @@ export default function App() {
 
   const handlePaste = useCallback(async (clipboardData?: DataTransfer, asNew: boolean = false) => {
     try {
+      if (!asNew) {
+        const consumed = await pasteFromInternalClipboard();
+        if (consumed) return;
+      }
+
       // 1. Try to get from DataTransfer (from 'paste' event)
       if (clipboardData) {
         const items = Array.from(clipboardData.items);
@@ -1016,7 +1170,7 @@ export default function App() {
     } catch (err) {
       console.warn('Paste failed:', err);
     }
-  }, [processPastedImage]);
+  }, [processPastedImage, pasteFromInternalClipboard]);
 
   // Keyboard shortcuts and paste event
   useEffect(() => {
@@ -1058,7 +1212,7 @@ export default function App() {
 
         switch (e.key.toLowerCase()) {
           case 'c':
-            if (state.selection) {
+            if (state.selection || state.selectedRasterLayerId || state.selectedShapeIds.length > 0) {
               e.preventDefault();
               handleCopy();
             }

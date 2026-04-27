@@ -444,7 +444,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={onCopy} 
             icon={<Copy size={18} />} 
             label="복사" 
-            disabled={!state.selection} 
+            disabled={!state.selection && state.selectedShapeIds.length === 0 && !state.selectedRasterLayerId} 
             shortcut="Ctrl+C"
           />
           <ToolbarButton 
