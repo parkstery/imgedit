@@ -20,6 +20,7 @@ import {
   Undo2,
   Redo2,
   PaintBucket,
+  Eraser,
   Palette,
   Type,
   ArrowUpRight,
@@ -365,6 +366,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<PaintBucket size={18} />}
           label="페인트통"
           active={state.tool === 'fill'}
+        />
+        <ToolbarButton
+          onClick={() => onToolChange('eraser')}
+          icon={<Eraser size={18} />}
+          label="지우개"
+          active={state.tool === 'eraser'}
         />
         <ToolbarButton
           onClick={() => onToolChange('text')}

@@ -87,6 +87,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         return '자유그리기';
       case 'text':
         return '텍스트';
+      case 'eraser':
+        return '지우개';
       default:
         return '도형 추가';
     }
@@ -161,6 +163,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   } | null>(null);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
+  const eraserStateRef = useRef<{
+    layerId: string;
+    lastDocPoint: Point;
+  } | null>(null);
+  const eraserApplyGenRef = useRef(0);
   const selectionMoveStateRef = useRef<{
     kind: 'rect' | 'circle';
     startImagePoint: Point;
@@ -213,6 +220,75 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       rotation: lyr.imageRotation ?? 0,
     };
   }, []);
+
+  const docToLayerImageLocal = useCallback((layer: EditorLayer, p: Point): Point | null => {
+    const img = layer.image;
+    if (!img) return null;
+    const ix = layer.imageX ?? 0;
+    const iy = layer.imageY ?? 0;
+    const r = layer.imageRotation ?? 0;
+    if (!r || Math.abs(r) < 1e-9) {
+      return { x: p.x - ix, y: p.y - iy };
+    }
+    const cx = ix + img.width / 2;
+    const cy = iy + img.height / 2;
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const cos = Math.cos(-r);
+    const sin = Math.sin(-r);
+    return {
+      x: dx * cos - dy * sin + img.width / 2,
+      y: dx * sin + dy * cos + img.height / 2,
+    };
+  }, []);
+
+  const applyEraserStroke = useCallback(
+    (layerId: string, fromDoc: Point, toDoc: Point) => {
+      const layer = state.layers.find(l => l.id === layerId);
+      if (!layer?.image || layer.locked) return;
+      const fromLocal = docToLayerImageLocal(layer, fromDoc);
+      const toLocal = docToLayerImageLocal(layer, toDoc);
+      if (!fromLocal || !toLocal) return;
+      const src = layer.image;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, src.width);
+      canvas.height = Math.max(1, src.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(src, 0, 0);
+      const sizePx = Math.max(2, state.lineWidth * 2);
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = sizePx;
+      ctx.beginPath();
+      ctx.moveTo(fromLocal.x, fromLocal.y);
+      ctx.lineTo(toLocal.x, toLocal.y);
+      ctx.stroke();
+      ctx.restore();
+      let dataUrl = '';
+      try {
+        dataUrl = canvas.toDataURL();
+      } catch {
+        return;
+      }
+      if (!dataUrl) return;
+      const gen = ++eraserApplyGenRef.current;
+      const nextImg = new Image();
+      nextImg.onload = () => {
+        if (gen !== eraserApplyGenRef.current) return;
+        setState(prev => ({
+          ...prev,
+          layers: prev.layers.map(l => (l.id === layerId ? { ...l, image: nextImg } : l)),
+        }));
+      };
+      nextImg.onerror = () => {};
+      nextImg.src = dataUrl;
+    },
+    [docToLayerImageLocal, setState, state.layers, state.lineWidth],
+  );
 
   const commitPolylineDraft = useCallback(() => {
     setState(prev => {
@@ -1091,7 +1167,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (e.button === 1 || (e.button === 0 && e.altKey && !(state.tool === 'select' && state.selectedShapeIds.length === 1))) {
       setState(prev => ({ ...prev, isPanning: true }));
     } else if (e.button === 0) {
-      if (state.tool === 'select') {
+      if (state.tool === 'eraser' && documentHasRaster(state.layers)) {
+        const al = getActiveLayer(state.layers, state.activeLayerId);
+        if (!al?.image || al.locked) return;
+        const imgPos = toImageCoords(pos);
+        onPrepareImageUndo?.();
+        eraserStateRef.current = {
+          layerId: al.id,
+          lastDocPoint: imgPos,
+        };
+        applyEraserStroke(al.id, imgPos, imgPos);
+      } else if (state.tool === 'select') {
         const imgPos = toImageCoords(pos);
         if (state.selectedShapeIds.length === 1) {
           const active = getActiveHandles();
@@ -1441,6 +1527,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'polyline' &&
         state.tool !== 'freehand' &&
         state.tool !== 'fill' &&
+        state.tool !== 'eraser' &&
         state.tool !== 'text' &&
         state.tool !== 'select' &&
         state.tool !== 'marquee' &&
@@ -1661,6 +1748,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       }));
       return;
     }
+    if (eraserStateRef.current) {
+      const st = eraserStateRef.current;
+      const current = toImageCoords(pos);
+      applyEraserStroke(st.layerId, st.lastDocPoint, current);
+      eraserStateRef.current = {
+        ...st,
+        lastDocPoint: current,
+      };
+      return;
+    }
 
     if (
       state.tool === 'select' &&
@@ -1789,6 +1886,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       };
       const valid = rect.width >= 2 && rect.height >= 2 ? rect : null;
       onAreaCaptureResult?.(valid);
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+    if (eraserStateRef.current) {
+      eraserStateRef.current = null;
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
@@ -1988,6 +2091,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ? 'cursor-crosshair'
           : state.tool === 'fill'
           ? 'cursor-paint-bucket'
+          : state.tool === 'eraser'
+          ? 'cursor-crosshair'
           : state.tool === 'text'
             ? 'cursor-crosshair'
             : state.tool === 'select' &&

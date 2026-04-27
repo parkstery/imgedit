@@ -33,6 +33,7 @@ export type Tool =
   /** 원호: 세 점(시작, 끝, 호 위 중간) */
   | 'arc'
   | 'fill'
+  | 'eraser'
   | 'text';
 
 export interface PolylineDraft {
