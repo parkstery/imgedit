@@ -965,27 +965,36 @@ export default function App() {
       const cloned = await cloneImageElement(payload.image);
       if (!cloned) return false;
       const before = cloneLayersDeep(s.layers);
-      setState(prev => {
-        const L = createEditorLayer(getNextLayerName(prev.layers));
-        return {
+      const activeLayer = getActiveLayer(s.layers, s.activeLayerId);
+      const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
+      const canvas = document.createElement('canvas');
+      canvas.width = dw;
+      canvas.height = dh;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+      if (activeLayer?.image) {
+        ctx.drawImage(activeLayer.image, activeLayer.imageX ?? 0, activeLayer.imageY ?? 0);
+      }
+      const nx = payload.x + 20;
+      const ny = payload.y + 20;
+      ctx.drawImage(cloned, nx, ny);
+      const merged = new Image();
+      merged.onload = () => {
+        setState(prev => ({
           ...prev,
           tool: 'select',
-          layers: [
-            ...prev.layers,
-            {
-              ...L,
-              image: cloned,
-              fileName: payload.fileName ?? 'pasted-image.png',
-              imageX: payload.x + 20,
-              imageY: payload.y + 20,
-            },
-          ],
-          activeLayerId: L.id,
+          layers: mapLayersReplaceActiveLayerRaster(
+            prev.layers,
+            prev.activeLayerId,
+            merged,
+            activeLayer?.fileName ?? payload.fileName ?? 'pasted-image.png'
+          ),
           selectedShapeIds: [],
-          selectedRasterLayerId: L.id,
+          selectedRasterLayerId: prev.activeLayerId,
           selection: null,
-        };
-      });
+        }));
+      };
+      merged.src = canvas.toDataURL();
       handleLayersMutation(before, s.activeLayerId, '이미지 붙여넣기');
       return true;
     }
