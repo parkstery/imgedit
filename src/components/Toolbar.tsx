@@ -26,6 +26,8 @@ import {
   Frame,
   Crop,
   Monitor,
+  RotateCcw,
+  RotateCw,
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -124,6 +126,11 @@ interface ToolbarProps {
   onRedoLastShape: () => void;
   canUndoLast: boolean;
   canRedoLast: boolean;
+  canTransformSelection: boolean;
+  onTransformScaleDown: () => void;
+  onTransformScaleUp: () => void;
+  onTransformRotateLeft: () => void;
+  onTransformRotateRight: () => void;
   onClearShapes: () => void;
   onCopy: () => void;
   onCut: () => void;
@@ -159,6 +166,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRedoLastShape,
   canUndoLast,
   canRedoLast,
+  canTransformSelection,
+  onTransformScaleDown,
+  onTransformScaleUp,
+  onTransformRotateLeft,
+  onTransformRotateRight,
   onClearShapes,
   onCopy,
   onCut,
@@ -365,6 +377,32 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             icon={<Trash2 size={18} />} 
             label="모든 도형 삭제" 
             disabled={totalShapeCount(state.layers) === 0}
+          />
+        </div>
+        <div className="flex items-center gap-0.5 ml-1 px-1 border-l border-neutral-700">
+          <ToolbarButton
+            onClick={onTransformScaleDown}
+            icon={<ZoomOut size={18} />}
+            label="선택 축소 (90%)"
+            disabled={!canTransformSelection}
+          />
+          <ToolbarButton
+            onClick={onTransformScaleUp}
+            icon={<ZoomIn size={18} />}
+            label="선택 확대 (110%)"
+            disabled={!canTransformSelection}
+          />
+          <ToolbarButton
+            onClick={onTransformRotateLeft}
+            icon={<RotateCcw size={18} />}
+            label="선택 회전 (-15°)"
+            disabled={!canTransformSelection}
+          />
+          <ToolbarButton
+            onClick={onTransformRotateRight}
+            icon={<RotateCw size={18} />}
+            label="선택 회전 (+15°)"
+            disabled={!canTransformSelection}
           />
         </div>
       </div>
