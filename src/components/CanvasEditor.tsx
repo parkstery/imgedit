@@ -157,7 +157,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   } | null>(null);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
-  /** 원형 영역: 1클릭=지름 왼쪽 끝, 2클릭=같은 높이에서 지름(가로) 확정 */
+  /** 원형 영역: 1·2클릭이 지름의 양끝(임의 방향), 거리=지름 */
   const marqueeCircleAnchorRef = useRef<Point | null>(null);
   const marqueeCirclePreviewRef = useRef<Point | null>(null);
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
@@ -584,21 +584,20 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const a = marqueeCircleAnchorRef.current;
       const p = marqueeCirclePreviewRef.current;
       if (a && p) {
-        const y = a.y;
-        const left = Math.min(a.x, p.x);
-        const right = Math.max(a.x, p.x);
-        const cx = (left + right) / 2;
-        const r = (right - left) / 2;
+        const d = Math.hypot(p.x - a.x, p.y - a.y);
+        const r = d / 2;
+        const cx = (a.x + p.x) / 2;
+        const cy = (a.y + p.y) / 2;
         ctx.strokeStyle = '#3b82f6';
         ctx.lineWidth = 2 / state.zoom;
         ctx.setLineDash([5 / state.zoom, 5 / state.zoom]);
         ctx.beginPath();
-        ctx.moveTo(left, y);
-        ctx.lineTo(right, y);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(p.x, p.y);
         ctx.stroke();
         if (r > 0.5) {
           ctx.beginPath();
-          ctx.arc(cx, y, r, 0, Math.PI * 2);
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
           ctx.stroke();
         }
         ctx.setLineDash([]);
@@ -1185,13 +1184,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           drawRef.current();
         } else {
           const a = marqueeCircleAnchorRef.current;
-          const y = a.y;
-          const bx = imgPosCircle.x;
-          const left = Math.min(a.x, bx);
-          const right = Math.max(a.x, bx);
-          const cx = (left + right) / 2;
-          const cy = y;
-          const r = (right - left) / 2;
+          if (!a) return;
+          const b = { x: imgPosCircle.x, y: imgPosCircle.y };
+          const d = Math.hypot(b.x - a.x, b.y - a.y);
+          const r = d / 2;
+          const cx = (a.x + b.x) / 2;
+          const cy = (a.y + b.y) / 2;
           marqueeCircleAnchorRef.current = null;
           marqueeCirclePreviewRef.current = null;
           if (r >= 1) {
@@ -1262,10 +1260,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     lastImgPosRef.current = imgPos;
 
     if (state.tool === 'marqueeCircle' && marqueeCircleAnchorRef.current) {
-      marqueeCirclePreviewRef.current = {
-        x: imgPos.x,
-        y: marqueeCircleAnchorRef.current.y,
-      };
+      marqueeCirclePreviewRef.current = { x: imgPos.x, y: imgPos.y };
       drawRef.current();
     }
 
