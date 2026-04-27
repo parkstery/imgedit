@@ -1212,15 +1212,21 @@ export default function App() {
 
         switch (e.key.toLowerCase()) {
           case 'c':
-            if (state.selection || state.selectedRasterLayerId || state.selectedShapeIds.length > 0) {
-              e.preventDefault();
-              handleCopy();
+            {
+              const s = stateRef.current;
+              if (s.selection || s.selectedRasterLayerId || s.selectedShapeIds.length > 0) {
+                e.preventDefault();
+                void handleCopy();
+              }
             }
             break;
           case 'x':
-            if (state.selection) {
-              e.preventDefault();
-              handleCut();
+            {
+              const s = stateRef.current;
+              if (s.selection) {
+                e.preventDefault();
+                void handleCut();
+              }
             }
             break;
           case 'v':
@@ -1265,7 +1271,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [state.selection, handleCopy, handleCut, handlePaste, handleSave, applyImageSnapshot, buildStateSnapshot, handleRedoLastShape]);
+  }, [handleCopy, handleCut, handlePaste, handleSave, applyImageSnapshot, buildStateSnapshot, handleRedoLastShape]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">
