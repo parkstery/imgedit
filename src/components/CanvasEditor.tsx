@@ -157,6 +157,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   } | null>(null);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
+  /** 원형 영역: 1클릭=지름 왼쪽 끝, 2클릭=같은 높이에서 지름(가로) 확정 */
+  const marqueeCircleAnchorRef = useRef<Point | null>(null);
+  const marqueeCirclePreviewRef = useRef<Point | null>(null);
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
 
   /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
@@ -261,6 +264,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   useEffect(() => {
     if (state.tool !== 'polyline') setPolyHover(null);
     if (state.tool !== 'select') setHoveringShape(false);
+    if (state.tool !== 'marqueeCircle') {
+      marqueeCircleAnchorRef.current = null;
+      marqueeCirclePreviewRef.current = null;
+    }
   }, [state.tool]);
 
   useEffect(() => {
@@ -328,14 +335,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
       if (state.tool === 'marquee' || state.tool === 'marqueeCircle') {
         if (e.key === 'Escape') {
-          if (state.selection || state.selectionCircle || state.isSelecting) {
+          if (state.selection || state.selectionCircle || state.isSelecting || marqueeCircleAnchorRef.current) {
             e.preventDefault();
+            marqueeCircleAnchorRef.current = null;
+            marqueeCirclePreviewRef.current = null;
             setState(prev => ({
               ...prev,
               selection: null,
               selectionCircle: null,
               isSelecting: false,
             }));
+            drawRef.current();
             return;
           }
         }
@@ -569,6 +579,30 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ctx.arc(sc.cx, sc.cy, sc.r, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+    if (state.tool === 'marqueeCircle') {
+      const a = marqueeCircleAnchorRef.current;
+      const p = marqueeCirclePreviewRef.current;
+      if (a && p) {
+        const y = a.y;
+        const left = Math.min(a.x, p.x);
+        const right = Math.max(a.x, p.x);
+        const cx = (left + right) / 2;
+        const r = (right - left) / 2;
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2 / state.zoom;
+        ctx.setLineDash([5 / state.zoom, 5 / state.zoom]);
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(right, y);
+        ctx.stroke();
+        if (r > 0.5) {
+          ctx.beginPath();
+          ctx.arc(cx, y, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
     }
 
     if (captureDraftRect && (captureDraftRect.width > 0 || captureDraftRect.height > 0)) {
@@ -1137,14 +1171,47 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           selectedRasterLayerId: null,
         }));
       } else if (state.tool === 'marqueeCircle' && documentHasRaster(state.layers)) {
-        setState(prev => ({
-          ...prev,
-          isSelecting: true,
-          selection: null,
-          selectionCircle: null,
-          selectedShapeIds: [],
-          selectedRasterLayerId: null,
-        }));
+        const imgPosCircle = toImageCoords(pos);
+        if (marqueeCircleAnchorRef.current == null) {
+          marqueeCircleAnchorRef.current = { x: imgPosCircle.x, y: imgPosCircle.y };
+          marqueeCirclePreviewRef.current = { x: imgPosCircle.x, y: imgPosCircle.y };
+          setState(prev => ({
+            ...prev,
+            selection: null,
+            selectionCircle: null,
+            selectedShapeIds: [],
+            selectedRasterLayerId: null,
+          }));
+          drawRef.current();
+        } else {
+          const a = marqueeCircleAnchorRef.current;
+          const y = a.y;
+          const bx = imgPosCircle.x;
+          const left = Math.min(a.x, bx);
+          const right = Math.max(a.x, bx);
+          const cx = (left + right) / 2;
+          const cy = y;
+          const r = (right - left) / 2;
+          marqueeCircleAnchorRef.current = null;
+          marqueeCirclePreviewRef.current = null;
+          if (r >= 1) {
+            setState(prev => ({
+              ...prev,
+              selection: null,
+              selectionCircle: { cx, cy, r },
+              selectedShapeIds: [],
+              selectedRasterLayerId: null,
+            }));
+          } else {
+            setState(prev => ({
+              ...prev,
+              selectionCircle: null,
+              selectedShapeIds: [],
+              selectedRasterLayerId: null,
+            }));
+          }
+          drawRef.current();
+        }
       } else if (state.tool === 'text' && documentHasRaster(state.layers)) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (al?.locked) return;
@@ -1193,6 +1260,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const pos = getMousePos(e);
     const imgPos = toImageCoords(pos);
     lastImgPosRef.current = imgPos;
+
+    if (state.tool === 'marqueeCircle' && marqueeCircleAnchorRef.current) {
+      marqueeCirclePreviewRef.current = {
+        x: imgPos.x,
+        y: marqueeCircleAnchorRef.current.y,
+      };
+      drawRef.current();
+    }
 
     if (areaCaptureDragRef.current && areaCaptureArmed) {
       const st = areaCaptureDragRef.current.start;
@@ -1437,11 +1512,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           height: Math.abs(current.y - start.y),
         };
         setState(prev => ({ ...prev, selection: rect, selectionCircle: null }));
-      } else if (state.tool === 'marqueeCircle') {
-        const cx = start.x;
-        const cy = start.y;
-        const r = Math.hypot(current.x - cx, current.y - cy);
-        setState(prev => ({ ...prev, selection: null, selectionCircle: { cx, cy, r } }));
       }
     } else if (state.activeShape) {
       const current = toImageCoords(pos);
@@ -1621,6 +1691,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (state.tool === 'marqueeCircle' && marqueeCircleAnchorRef.current) {
+      marqueeCircleAnchorRef.current = null;
+      marqueeCirclePreviewRef.current = null;
+      drawRef.current();
+    }
     if (state.tool === 'polyline' && state.polylineDraft && state.polylineDraft.points.length >= 2) {
       commitPolylineDraft();
     }

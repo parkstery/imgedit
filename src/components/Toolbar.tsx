@@ -295,7 +295,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton
           onClick={() => onToolChange('marqueeCircle')}
           icon={<SelectionCircleToolbarIcon size={18} />}
-          label="영역 선택 (점선 원)"
+          label="영역 선택 (점선 원): 첫 클릭 지름 왼쪽 끝, 둘째 클릭으로 가로 지름"
           active={state.tool === 'marqueeCircle'}
         />
         <ToolbarButton 
