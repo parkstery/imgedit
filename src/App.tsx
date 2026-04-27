@@ -1145,13 +1145,14 @@ export default function App() {
         const L0 = fresh.layers[0];
         return {
           ...prev,
+          tool: 'select',
           layers: [{ ...L0, image: img, fileName: 'pasted-image.png' }],
           activeLayerId: L0.id,
           zoom: 1,
           position: { x: 50, y: 50 },
           selection: null,
           selectedShapeIds: [],
-          selectedRasterLayerId: null,
+          selectedRasterLayerId: L0.id,
         };
       });
     } else {
@@ -1205,6 +1206,7 @@ export default function App() {
         pushPasteUndoSnapshot(snapshot);
         setState(prev => ({
           ...prev,
+          tool: 'select',
           layers: prev.layers.map(l =>
             l.id === prev.activeLayerId
               ? {
@@ -1218,6 +1220,7 @@ export default function App() {
               : l
           ),
           selection: null,
+          selectedShapeIds: [],
           selectedRasterLayerId: prev.activeLayerId,
         }));
       };
