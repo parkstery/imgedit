@@ -1,4 +1,4 @@
-import type { Point, Shape, Rect } from '../types';
+import type { LineStyle, Point, Shape, Rect } from '../types';
 import { circumcircleThroughThreePoints, getArcStrokeParams } from './arcGeometry';
 
 /** 한글·라틴 모두 쓰기 좋은 시스템 폰트 스택 */
@@ -7,6 +7,26 @@ export const CANVAS_TEXT_FONT_STACK =
 
 function setTextFont(ctx: CanvasRenderingContext2D, fontSize: number) {
   ctx.font = `${fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
+}
+
+export function getLineDashPattern(style: LineStyle, lineWidth: number): number[] {
+  const u = Math.max(1, lineWidth);
+  switch (style) {
+    case 'dashed':
+      return [u * 4, u * 2.5];
+    case 'dotted':
+      return [u, u * 2.2];
+    case 'dashDot':
+      return [u * 4, u * 2.2, u, u * 2.2];
+    case 'solid':
+    default:
+      return [];
+  }
+}
+
+export function applyStrokeStyle(ctx: CanvasRenderingContext2D, lineWidth: number, lineStyle: LineStyle) {
+  ctx.lineWidth = lineWidth;
+  ctx.setLineDash(getLineDashPattern(lineStyle, lineWidth));
 }
 
 /** 회전 중심점(= stored AABB 중심). 회전은 이 점을 기준으로 적용된다. */
@@ -122,8 +142,9 @@ export function renderShapesOnContext(ctx: CanvasRenderingContext2D, shapes: rea
     ctx.save();
     applyShapeRotationTransform(ctx, shape);
     ctx.strokeStyle = shape.color;
-    ctx.lineWidth = shape.lineWidth;
+    applyStrokeStyle(ctx, shape.lineWidth, shape.lineStyle);
     drawShapePath(ctx, shape);
+    ctx.setLineDash([]);
     ctx.restore();
   }
 }
@@ -135,8 +156,9 @@ export function strokeShapesOnContext(ctx: CanvasRenderingContext2D, shapes: rea
     ctx.save();
     applyShapeRotationTransform(ctx, shape);
     ctx.strokeStyle = shape.color;
-    ctx.lineWidth = shape.lineWidth;
+    applyStrokeStyle(ctx, shape.lineWidth, shape.lineStyle);
     drawShapePath(ctx, shape);
+    ctx.setLineDash([]);
     ctx.restore();
   }
 }

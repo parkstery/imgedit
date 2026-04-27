@@ -3,6 +3,7 @@ import { EditorState, Point, Rect, Shape, EditorLayer } from '../types';
 import { cn } from '../lib/utils';
 import { floodFillImageData, hexToRgba } from '../lib/floodFill';
 import {
+  applyStrokeStyle,
   fillTextShapeOnContext,
   CANVAS_TEXT_FONT_STACK,
   strokeShapesOnContext,
@@ -202,6 +203,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       y2: iy + h,
       color: '#000000',
       lineWidth: 1,
+      lineStyle: 'solid',
       rotation: lyr.imageRotation ?? 0,
     };
   }, []);
@@ -226,6 +228,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         points: d.points.map(p => ({ x: p.x, y: p.y })),
         color: d.color,
         lineWidth: d.lineWidth,
+        lineStyle: d.lineStyle,
       };
       const al = getActiveLayer(prev.layers, prev.activeLayerId);
       if (!al || al.locked) return prev;
@@ -255,6 +258,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         points: d.points.map(p => ({ x: p.x, y: p.y })),
         color: d.color,
         lineWidth: d.lineWidth,
+        lineStyle: d.lineStyle,
       };
       const al = getActiveLayer(prev.layers, prev.activeLayerId);
       if (!al || al.locked) return prev;
@@ -509,7 +513,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     if (state.activeShape) {
         ctx.strokeStyle = state.activeShape.color;
-        ctx.lineWidth = state.activeShape.lineWidth / state.zoom;
+        applyStrokeStyle(
+          ctx,
+          state.activeShape.lineWidth / state.zoom,
+          state.activeShape.lineStyle,
+        );
         ctx.beginPath();
         if (state.activeShape.type === 'line') {
           ctx.moveTo(state.activeShape.x1, state.activeShape.y1);
@@ -524,12 +532,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         }
         ctx.stroke();
+        ctx.setLineDash([]);
     }
 
     if (state.polylineDraft && state.polylineDraft.points.length > 0) {
         const pts = state.polylineDraft.points;
         ctx.strokeStyle = state.polylineDraft.color;
-        ctx.lineWidth = state.polylineDraft.lineWidth / state.zoom;
+        applyStrokeStyle(
+          ctx,
+          state.polylineDraft.lineWidth / state.zoom,
+          state.polylineDraft.lineStyle,
+        );
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) {
@@ -539,18 +552,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.lineTo(polyHover.x, polyHover.y);
         }
         ctx.stroke();
+        ctx.setLineDash([]);
     }
 
     if (state.freehandDraft && state.freehandDraft.points.length > 1) {
         const pts = state.freehandDraft.points;
         ctx.strokeStyle = state.freehandDraft.color;
-        ctx.lineWidth = state.freehandDraft.lineWidth / state.zoom;
+        applyStrokeStyle(
+          ctx,
+          state.freehandDraft.lineWidth / state.zoom,
+          state.freehandDraft.lineStyle,
+        );
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) {
           ctx.lineTo(pts[i].x, pts[i].y);
         }
         ctx.stroke();
+        ctx.setLineDash([]);
     }
 
     if (state.tool === 'text' && state.textDraft) {
@@ -718,6 +737,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           y2: iy + rl.image.height,
           color: '#000000',
           lineWidth: 1,
+          lineStyle: 'solid',
         };
         const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
         const h = getOrientedHandles(bs, hOff);
@@ -899,6 +919,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             points: [imgPos],
             color: prev.color,
             lineWidth: prev.lineWidth,
+            lineStyle: prev.lineStyle,
           },
         };
       }
@@ -927,6 +948,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             points: [imgPos],
             color: prev.color,
             lineWidth: prev.lineWidth,
+            lineStyle: prev.lineStyle,
           },
         };
       }
@@ -946,6 +968,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         points: draft.points.map(p => ({ x: p.x, y: p.y })),
         color: draft.color,
         lineWidth: draft.lineWidth,
+        lineStyle: draft.lineStyle,
       };
       const al = getActiveLayer(prev.layers, prev.activeLayerId);
       if (!al || al.locked) return { ...prev, freehandDraft: null };
@@ -1307,6 +1330,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ],
             color: state.color,
             lineWidth: state.lineWidth,
+            lineStyle: state.lineStyle,
           };
           arcDraftRef.current = [];
           arcHoverRef.current = null;
@@ -1366,6 +1390,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             y2: imgPos.y,
             color: state.color,
             lineWidth: state.lineWidth,
+            lineStyle: state.lineStyle,
           },
         }));
       }

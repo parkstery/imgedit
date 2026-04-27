@@ -17,6 +17,8 @@ export interface SelectionCircle {
   r: number;
 }
 
+export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dashDot';
+
 export type Tool =
   | 'select'
   /** 파란 점선 사각형(복사·잘라내기·선택 캡처용 영역) */
@@ -38,6 +40,7 @@ export interface PolylineDraft {
   points: Point[];
   color: string;
   lineWidth: number;
+  lineStyle: LineStyle;
 }
 
 export interface FreehandDraft {
@@ -45,6 +48,7 @@ export interface FreehandDraft {
   points: Point[];
   color: string;
   lineWidth: number;
+  lineStyle: LineStyle;
 }
 
 /** 텍스트 도구: 클릭한 이미지 좌표에 배치, 입력 후 확정 */
@@ -84,6 +88,7 @@ export interface Shape {
   y2: number;
   color: string;
   lineWidth: number;
+  lineStyle: LineStyle;
   /** polyline: 꼭짓점 / arc: [시작, 끝, 중간(호 위)] 세 점 */
   points?: Point[];
   /** type이 text일 때 (x1,y1) 왼쪽 베이스라인, fillText 기준 */
@@ -106,6 +111,7 @@ export interface EditorState {
   tool: Tool;
   color: string;
   lineWidth: number;
+  lineStyle: LineStyle;
   /** 텍스트 도구 글자 크기(px) */
   textFontSize: number;
   /** 페인트통 채우기 색 일치 허용 오차 (0~100, 채널별) */

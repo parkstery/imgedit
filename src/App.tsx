@@ -48,6 +48,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   tool: 'select',
   color: '#ff0000',
   lineWidth: 2,
+  lineStyle: 'solid',
   textFontSize: 24,
   fillTolerance: 40,
   fillIgnoreAlpha: false,
@@ -396,6 +397,8 @@ export default function App() {
     });
   const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
+  const handleLineStyleChange = (lineStyle: EditorState['lineStyle']) =>
+    setState(prev => ({ ...prev, lineStyle }));
   const handleTextFontSizeChange = (textFontSize: number) => {
     const next = Math.max(8, Math.min(256, Math.round(textFontSize)));
     setState(prev => ({
@@ -1471,6 +1474,7 @@ export default function App() {
         onToolChange={handleToolChange}
         onColorChange={handleColorChange}
         onLineWidthChange={handleLineWidthChange}
+        onLineStyleChange={handleLineStyleChange}
         onTextFontSizeChange={handleTextFontSizeChange}
         onFillToleranceChange={handleFillToleranceChange}
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}

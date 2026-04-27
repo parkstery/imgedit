@@ -30,6 +30,7 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
         y2: draft.y,
         color: draft.color,
         lineWidth: 0,
+        lineStyle: 'solid',
         text: draft.text.trim(),
         fontSize: draft.fontSize,
       };

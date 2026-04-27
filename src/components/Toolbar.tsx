@@ -31,7 +31,7 @@ import {
   ArrowLeft,
   ArrowRight,
 } from 'lucide-react';
-import { EditorState, Tool } from '../types';
+import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
 import { AdvancedColorWindow } from './AdvancedColorWindow';
 import { documentHasRaster, totalShapeCount } from '../lib/layers';
@@ -168,6 +168,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onLineWidthChange: (lineWidth: number) => void;
+  onLineStyleChange: (lineStyle: LineStyle) => void;
   onTextFontSizeChange: (px: number) => void;
   onFillToleranceChange: (tolerance: number) => void;
   onFillIgnoreAlphaChange: (ignoreAlpha: boolean) => void;
@@ -211,6 +212,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToolChange,
   onColorChange,
   onLineWidthChange,
+  onLineStyleChange,
   onTextFontSizeChange,
   onFillToleranceChange,
   onFillIgnoreAlphaChange,
@@ -451,6 +453,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
               title="선두께 (위/아래 화살표로 조절)"
             />
+            <select
+              value={state.lineStyle}
+              onChange={(e) => onLineStyleChange(e.target.value as LineStyle)}
+              className="w-20 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              title="선 종류"
+            >
+              <option value="solid">실선</option>
+              <option value="dashed">점선</option>
+              <option value="dotted">점점선</option>
+              <option value="dashDot">일점쇄선</option>
+            </select>
           </div>
           <ToolbarButton 
             onClick={onDeleteLastShape} 
