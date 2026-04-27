@@ -1885,7 +1885,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           : state.tool === 'fill'
           ? 'cursor-paint-bucket'
           : state.tool === 'text'
-            ? 'cursor-text'
+            ? 'cursor-crosshair'
             : state.tool === 'select' &&
                 (hoverHandle ||
                   resizeStateRef.current ||
