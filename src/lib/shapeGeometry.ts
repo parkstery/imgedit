@@ -49,6 +49,111 @@ export function getShapeBounds(shape: Shape): Rect | null {
   return { x, y, width: w, height: h };
 }
 
+/** 두 축정렬 사각형의 합집합 AABB */
+export function unionRects(a: Rect, b: Rect): Rect {
+  const x1 = Math.min(a.x, b.x);
+  const y1 = Math.min(a.y, b.y);
+  const x2 = Math.max(a.x + a.width, b.x + b.width);
+  const y2 = Math.max(a.y + a.height, b.y + b.height);
+  return { x: x1, y: y1, width: Math.max(1, x2 - x1), height: Math.max(1, y2 - y1) };
+}
+
+/** 문서 좌표계에서 도형의 축정렬 바운드(회전 반영). */
+export function getShapeWorldAabb(shape: Shape): Rect | null {
+  const rot = shape.rotation ?? 0;
+  const c = getShapeRotationCenter(shape);
+
+  const aabbFromCorners = (corners: Point[]): Rect => {
+    if (!rot) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of corners) {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      }
+      return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of corners) {
+      const w = rotatePoint(p, c, rot);
+      minX = Math.min(minX, w.x);
+      maxX = Math.max(maxX, w.x);
+      minY = Math.min(minY, w.y);
+      maxY = Math.max(maxY, w.y);
+    }
+    return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+  };
+
+  if (shape.type === 'text') {
+    const b = measureTextShapeBounds(shape);
+    if (!b) return null;
+    return aabbFromCorners([
+      { x: b.x, y: b.y },
+      { x: b.x + b.width, y: b.y },
+      { x: b.x + b.width, y: b.y + b.height },
+      { x: b.x, y: b.y + b.height },
+    ]);
+  }
+
+  if (shape.type === 'line') {
+    return aabbFromCorners([
+      { x: shape.x1, y: shape.y1 },
+      { x: shape.x2, y: shape.y2 },
+    ]);
+  }
+
+  if (shape.type === 'rect') {
+    const x1 = Math.min(shape.x1, shape.x2);
+    const x2 = Math.max(shape.x1, shape.x2);
+    const y1 = Math.min(shape.y1, shape.y2);
+    const y2 = Math.max(shape.y1, shape.y2);
+    return aabbFromCorners([
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2, y: y2 },
+      { x: x1, y: y2 },
+    ]);
+  }
+
+  if (shape.type === 'ellipse') {
+    const rx = Math.abs(shape.x2 - shape.x1) / 2;
+    const ry = Math.abs(shape.y2 - shape.y1) / 2;
+    const cx = (shape.x1 + shape.x2) / 2;
+    const cy = (shape.y1 + shape.y2) / 2;
+    if (!rot) {
+      return {
+        x: cx - rx,
+        y: cy - ry,
+        width: Math.max(1, 2 * rx),
+        height: Math.max(1, 2 * ry),
+      };
+    }
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const halfW = Math.hypot(rx * cos, ry * sin);
+    const halfH = Math.hypot(rx * sin, ry * cos);
+    return {
+      x: cx - halfW,
+      y: cy - halfH,
+      width: Math.max(1, 2 * halfW),
+      height: Math.max(1, 2 * halfH),
+    };
+  }
+
+  if (shape.type === 'polyline' && shape.points && shape.points.length > 0) {
+    return aabbFromCorners(shape.points.map(p => ({ x: p.x, y: p.y })));
+  }
+
+  return null;
+}
+
 function rotatePoint(p: Point, c: Point, angle: number): Point {
   if (!angle) return { x: p.x, y: p.y };
   const cos = Math.cos(angle);
