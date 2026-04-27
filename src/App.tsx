@@ -1052,31 +1052,43 @@ export default function App() {
         };
       });
     } else {
-      const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
       const activeLayer = getActiveLayer(s.layers, s.activeLayerId);
+      if (!activeLayer) return;
+      const hasBase = !!activeLayer.image;
+      const ax = activeLayer.imageX ?? 0;
+      const ay = activeLayer.imageY ?? 0;
+      const aw = activeLayer.image?.width ?? 0;
+      const ah = activeLayer.image?.height ?? 0;
+      const pasteW = s.selection ? Math.max(1, Math.round(s.selection.width)) : img.width;
+      const pasteH = s.selection ? Math.max(1, Math.round(s.selection.height)) : img.height;
+      const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
+      const pasteX = s.selection ? s.selection.x : (dw - img.width) / 2;
+      const pasteY = s.selection ? s.selection.y : (dh - img.height) / 2;
+      const left = hasBase ? Math.min(ax, pasteX) : pasteX;
+      const top = hasBase ? Math.min(ay, pasteY) : pasteY;
+      const right = hasBase ? Math.max(ax + aw, pasteX + pasteW) : pasteX + pasteW;
+      const bottom = hasBase ? Math.max(ay + ah, pasteY + pasteH) : pasteY + pasteH;
       const canvas = document.createElement('canvas');
-      canvas.width = dw;
-      canvas.height = dh;
+      canvas.width = Math.max(1, Math.ceil(right - left));
+      canvas.height = Math.max(1, Math.ceil(bottom - top));
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
       /** 활성 레이어 래스터만 깔고 그 위에 붙여넣기(다른 레이어 래스터는 합성하지 않음). */
-      if (activeLayer?.image) {
-        ctx.drawImage(activeLayer.image, activeLayer.imageX ?? 0, activeLayer.imageY ?? 0);
+      if (activeLayer.image) {
+        ctx.drawImage(activeLayer.image, ax - left, ay - top);
       }
 
       if (s.selection) {
         ctx.drawImage(
           img,
-          s.selection.x,
-          s.selection.y,
-          s.selection.width,
-          s.selection.height
+          pasteX - left,
+          pasteY - top,
+          pasteW,
+          pasteH
         );
       } else {
-        const x = (dw - img.width) / 2;
-        const y = (dh - img.height) / 2;
-        ctx.drawImage(img, x, y);
+        ctx.drawImage(img, pasteX - left, pasteY - top);
       }
 
       let mergedDataUrl: string;
@@ -1093,14 +1105,19 @@ export default function App() {
         pushPasteUndoSnapshot(snapshot);
         setState(prev => ({
           ...prev,
-          layers: mapLayersReplaceActiveLayerRaster(
-            prev.layers,
-            prev.activeLayerId,
-            mergedImg,
-            activeLayer?.fileName ?? 'pasted-image.png'
+          layers: prev.layers.map(l =>
+            l.id === prev.activeLayerId
+              ? {
+                  ...l,
+                  image: mergedImg,
+                  fileName: activeLayer.fileName ?? 'pasted-image.png',
+                  imageX: left,
+                  imageY: top,
+                }
+              : l
           ),
           selection: null,
-          selectedRasterLayerId: null,
+          selectedRasterLayerId: prev.activeLayerId,
         }));
       };
       mergedImg.src = mergedDataUrl;
