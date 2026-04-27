@@ -28,6 +28,8 @@ import {
   Monitor,
   RotateCcw,
   RotateCw,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 import { EditorState, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -206,6 +208,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     } else {
       setRotationDraft(String(Math.round(selectionRotationDeg * 1000) / 1000));
     }
+  };
+
+  const stepRotationBy45 = (delta: number) => {
+    if (selectionRotationDeg == null) return;
+    const parsed = parseFloat(rotationDraft.replace(/,/g, '.'));
+    const base = Number.isFinite(parsed) ? parsed : selectionRotationDeg;
+    onSelectionRotationDegCommit(base + delta);
   };
 
   return (
@@ -431,10 +440,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
           {selectionRotationDeg != null && (
             <div
-              className="flex items-center gap-1 ml-0.5 px-1.5 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
-              title="절대 각도(도). Enter 또는 포커스 해제로 적용"
+              className="flex items-center gap-0.5 ml-0.5 px-1.5 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
+              title="절대 각도(도). Enter 또는 포커스 해제로 적용. 화살표는 45°씩 조절"
             >
-              <span className="text-[10px] text-neutral-400 whitespace-nowrap">각도 °</span>
+              <span className="text-[10px] text-neutral-400 whitespace-nowrap pr-0.5">각도 °</span>
+              <button
+                type="button"
+                onClick={() => stepRotationBy45(-45)}
+                className={cn(
+                  'p-0.5 rounded flex items-center justify-center shrink-0',
+                  'text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600',
+                  'focus:outline-none focus:ring-1 focus:ring-blue-500',
+                )}
+                title="45° 감소"
+                aria-label="회전 각도 45도 감소"
+              >
+                <ArrowLeft size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
+              </button>
               <input
                 type="text"
                 inputMode="decimal"
@@ -451,6 +473,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-xs text-center tabular-nums focus:outline-none focus:border-blue-500"
                 aria-label="선택 개체 회전 각도(도)"
               />
+              <button
+                type="button"
+                onClick={() => stepRotationBy45(45)}
+                className={cn(
+                  'p-0.5 rounded flex items-center justify-center shrink-0',
+                  'text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600',
+                  'focus:outline-none focus:ring-1 focus:ring-blue-500',
+                )}
+                title="45° 증가"
+                aria-label="회전 각도 45도 증가"
+              >
+                <ArrowRight size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
+              </button>
             </div>
           )}
         </div>
