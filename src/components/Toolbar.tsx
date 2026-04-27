@@ -170,6 +170,7 @@ interface ToolbarProps {
   onLineWidthChange: (lineWidth: number) => void;
   onLineStyleChange: (lineStyle: LineStyle) => void;
   onTextFontSizeChange: (px: number) => void;
+  onTextStyleChange: (next: Partial<Pick<EditorState, 'textBold' | 'textItalic' | 'textUnderline'>>) => void;
   onFillToleranceChange: (tolerance: number) => void;
   onFillIgnoreAlphaChange: (ignoreAlpha: boolean) => void;
   onDeleteLastShape: () => void;
@@ -214,6 +215,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onLineWidthChange,
   onLineStyleChange,
   onTextFontSizeChange,
+  onTextStyleChange,
   onFillToleranceChange,
   onFillIgnoreAlphaChange,
   onDeleteLastShape,
@@ -386,6 +388,45 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
               title="텍스트 크기(px)"
             />
+            <button
+              type="button"
+              onClick={() => onTextStyleChange({ textBold: !state.textBold })}
+              className={cn(
+                'h-6 w-6 rounded border text-[11px] font-bold',
+                state.textBold
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-neutral-700 bg-neutral-950 text-neutral-200 hover:bg-neutral-800',
+              )}
+              title="굵게"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => onTextStyleChange({ textItalic: !state.textItalic })}
+              className={cn(
+                'h-6 w-6 rounded border text-[11px] italic',
+                state.textItalic
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-neutral-700 bg-neutral-950 text-neutral-200 hover:bg-neutral-800',
+              )}
+              title="기울임"
+            >
+              I
+            </button>
+            <button
+              type="button"
+              onClick={() => onTextStyleChange({ textUnderline: !state.textUnderline })}
+              className={cn(
+                'h-6 w-6 rounded border text-[11px] underline',
+                state.textUnderline
+                  ? 'border-blue-500 bg-blue-600 text-white'
+                  : 'border-neutral-700 bg-neutral-950 text-neutral-200 hover:bg-neutral-800',
+              )}
+              title="밑줄"
+            >
+              U
+            </button>
           </div>
         )}
         {state.tool === 'fill' && (

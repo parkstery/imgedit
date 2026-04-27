@@ -59,6 +59,9 @@ export interface TextDraft {
   text: string;
   color: string;
   fontSize: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
 }
 
 /** 벡터 도형이 모이는 레이어(아래에서 위로 쌓임) */
@@ -94,6 +97,10 @@ export interface Shape {
   /** type이 text일 때 (x1,y1) 왼쪽 베이스라인, fillText 기준 */
   text?: string;
   fontSize?: number;
+  /** type이 text일 때 기본 글자 모양 */
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
   /** 회전 각(라디안). 기본 0. 회전 앵커는 항상 stored AABB의 중심. */
   rotation?: number;
   /** type이 arc이고 구식 2점만 있을 때: 지름 반원의 반대편 */
@@ -114,6 +121,10 @@ export interface EditorState {
   lineStyle: LineStyle;
   /** 텍스트 도구 글자 크기(px) */
   textFontSize: number;
+  /** 텍스트 도구 기본 글자 모양 */
+  textBold: boolean;
+  textItalic: boolean;
+  textUnderline: boolean;
   /** 페인트통 채우기 색 일치 허용 오차 (0~100, 채널별) */
   fillTolerance: number;
   /** true면 채우기 영역 판별 시 RGB만 비교하고 알파는 무시 */

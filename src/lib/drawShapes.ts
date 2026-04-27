@@ -9,6 +9,16 @@ function setTextFont(ctx: CanvasRenderingContext2D, fontSize: number) {
   ctx.font = `${fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
 }
 
+function setTextFontStyled(
+  ctx: CanvasRenderingContext2D,
+  fontSize: number,
+  opts: { bold?: boolean; italic?: boolean } = {},
+) {
+  const fw = opts.bold ? '700' : '400';
+  const fs = opts.italic ? 'italic' : 'normal';
+  ctx.font = `${fs} ${fw} ${fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
+}
+
 function splitTextLines(text: string): string[] {
   return text.split(/\r?\n/);
 }
@@ -86,10 +96,23 @@ export function fillTextShapeOnContext(ctx: CanvasRenderingContext2D, shape: Sha
   applyShapeRotationTransform(ctx, shape);
   ctx.globalAlpha = 1;
   ctx.fillStyle = shape.color;
-  setTextFont(ctx, fs);
+  setTextFontStyled(ctx, fs, { bold: shape.bold, italic: shape.italic });
   ctx.textBaseline = 'alphabetic';
   lines.forEach((line, i) => {
-    ctx.fillText(line, shape.x1, shape.y1 + i * lineHeight);
+    const yy = shape.y1 + i * lineHeight;
+    ctx.fillText(line, shape.x1, yy);
+    if (shape.underline) {
+      const m = ctx.measureText(line || ' ');
+      const left = shape.x1 + (m.actualBoundingBoxLeft ?? 0);
+      const right = shape.x1 + (m.actualBoundingBoxRight ?? m.width);
+      const uy = yy + Math.max(1, fs * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(left, uy);
+      ctx.lineTo(right, uy);
+      ctx.lineWidth = Math.max(1, fs * 0.08);
+      ctx.strokeStyle = shape.color;
+      ctx.stroke();
+    }
   });
   ctx.restore();
 }
@@ -103,7 +126,7 @@ export function measureTextShapeBounds(shape: Shape): Rect | null {
   const fs = Math.max(1, shape.fontSize);
   const lines = splitTextLines(shape.text);
   const lineHeight = getTextLineHeight(fs);
-  setTextFont(ctx, fs);
+  setTextFontStyled(ctx, fs, { bold: shape.bold, italic: shape.italic });
   let minLeft = 0;
   let maxRight = 0;
   let firstAscent = fs * 0.72;
@@ -118,7 +141,11 @@ export function measureTextShapeBounds(shape: Shape): Rect | null {
     if (i === lines.length - 1) lastDescent = m.actualBoundingBoxDescent ?? lastDescent;
   });
   const top = shape.y1 - firstAscent;
-  const bottom = shape.y1 + (lines.length - 1) * lineHeight + lastDescent;
+  let bottom = shape.y1 + (lines.length - 1) * lineHeight + lastDescent;
+  if (shape.underline) {
+    const underlineBottom = shape.y1 + (lines.length - 1) * lineHeight + Math.max(1, fs * 0.2);
+    bottom = Math.max(bottom, underlineBottom);
+  }
   return {
     x: shape.x1 + minLeft,
     y: top,

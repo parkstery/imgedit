@@ -33,6 +33,9 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
         lineStyle: 'solid',
         text: draft.text.trim(),
         fontSize: draft.fontSize,
+        bold: draft.bold,
+        italic: draft.italic,
+        underline: draft.underline,
       };
       const al = getActiveLayer(prev.layers, prev.activeLayerId);
       if (!al || al.locked) return { ...prev, textDraft: null };
@@ -112,7 +115,13 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
           rows={3}
           placeholder="여기에 여러 줄 입력 (Ctrl+Enter로 확정)"
           className="box-border w-full min-w-0 rounded border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-sm text-left outline-none resize-y focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/25 sm:min-w-[14rem]"
-          style={{ fontFamily: CANVAS_TEXT_FONT_STACK, color: d.color }}
+          style={{
+            fontFamily: CANVAS_TEXT_FONT_STACK,
+            color: d.color,
+            fontWeight: d.bold ? 700 : 400,
+            fontStyle: d.italic ? 'italic' : 'normal',
+            textDecoration: d.underline ? 'underline' : 'none',
+          }}
         />
       </div>
       <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-center">

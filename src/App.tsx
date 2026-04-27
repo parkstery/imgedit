@@ -50,6 +50,9 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   lineWidth: 2,
   lineStyle: 'solid',
   textFontSize: 24,
+  textBold: false,
+  textItalic: false,
+  textUnderline: false,
   fillTolerance: 40,
   fillIgnoreAlpha: false,
   activeShape: null,
@@ -378,6 +381,9 @@ export default function App() {
               text: '',
               color: prev.color,
               fontSize: prev.textFontSize,
+              bold: prev.textBold,
+              italic: prev.textItalic,
+              underline: prev.textUnderline,
             }
           : null;
       const keepMarqueeUi =
@@ -407,6 +413,23 @@ export default function App() {
       textDraft: prev.textDraft ? { ...prev.textDraft, fontSize: next } : null,
     }));
   };
+  const handleTextStyleChange = useCallback(
+    (next: Partial<Pick<EditorState, 'textBold' | 'textItalic' | 'textUnderline'>>) => {
+      setState(prev => ({
+        ...prev,
+        ...next,
+        textDraft: prev.textDraft
+          ? {
+              ...prev.textDraft,
+              bold: next.textBold ?? prev.textBold,
+              italic: next.textItalic ?? prev.textItalic,
+              underline: next.textUnderline ?? prev.textUnderline,
+            }
+          : prev.textDraft,
+      }));
+    },
+    [],
+  );
   const handleFillToleranceChange = (fillTolerance: number) => {
     const next = Math.max(0, Math.min(100, Math.round(fillTolerance)));
     writeFillTolerance(next);
@@ -1476,6 +1499,7 @@ export default function App() {
         onLineWidthChange={handleLineWidthChange}
         onLineStyleChange={handleLineStyleChange}
         onTextFontSizeChange={handleTextFontSizeChange}
+        onTextStyleChange={handleTextStyleChange}
         onFillToleranceChange={handleFillToleranceChange}
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
         onDeleteLastShape={handleDeleteLastShape}

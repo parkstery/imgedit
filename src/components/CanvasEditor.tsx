@@ -578,12 +578,27 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         if (d.text.trim()) {
           ctx.globalAlpha = 0.5;
           ctx.fillStyle = d.color;
-          ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
+          const fw = d.bold ? '700' : '400';
+          const fs = d.italic ? 'italic' : 'normal';
+          ctx.font = `${fs} ${fw} ${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
           ctx.textBaseline = 'alphabetic';
           const lines = d.text.split(/\r?\n/);
           const lineHeight = Math.max(1, d.fontSize * 1.25);
           lines.forEach((line, i) => {
-            ctx.fillText(line, d.x, d.y + i * lineHeight);
+            const yy = d.y + i * lineHeight;
+            ctx.fillText(line, d.x, yy);
+            if (d.underline) {
+              const m = ctx.measureText(line || ' ');
+              const left = d.x + (m.actualBoundingBoxLeft ?? 0);
+              const right = d.x + (m.actualBoundingBoxRight ?? m.width);
+              const uy = yy + Math.max(1, d.fontSize * 0.12);
+              ctx.beginPath();
+              ctx.moveTo(left, uy);
+              ctx.lineTo(right, uy);
+              ctx.lineWidth = Math.max(1, d.fontSize * 0.08) / state.zoom;
+              ctx.strokeStyle = d.color;
+              ctx.stroke();
+            }
           });
         } else {
           ctx.strokeStyle = d.color;
@@ -1368,6 +1383,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             text: prev.textDraft?.text ?? '',
             color: prev.color,
             fontSize: prev.textFontSize,
+            bold: prev.textBold,
+            italic: prev.textItalic,
+            underline: prev.textUnderline,
           },
         }));
       } else if (
