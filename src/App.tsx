@@ -686,6 +686,48 @@ export default function App() {
         };
       });
     } else {
+      const sel = s.selection;
+      /** 영역선택 후 붙여넣기: 문서 전체에 평탄화하지 않고, 붙인 픽셀만 크기·좌표를 가진 새 레이어(클립보드「새 이미지」와 동일한 선택/이동 UX). */
+      if (sel && sel.width >= 2 && sel.height >= 2) {
+        const w = Math.max(1, Math.round(sel.width));
+        const h = Math.max(1, Math.round(sel.height));
+        const regionCanvas = document.createElement('canvas');
+        regionCanvas.width = w;
+        regionCanvas.height = h;
+        const rctx = regionCanvas.getContext('2d');
+        if (!rctx) return;
+        rctx.drawImage(img, 0, 0, w, h);
+        let regionDataUrl: string;
+        try {
+          regionDataUrl = regionCanvas.toDataURL();
+        } catch {
+          console.warn('이미지 붙여넣기에 실패했습니다(캔버스 보안 제한 등).');
+          return;
+        }
+        const regionImg = new Image();
+        regionImg.onload = () => {
+          appendUndoEntry({ type: 'imageMerge', snapshot, label: '붙여넣기 (영역, 새 레이어)' });
+          pushPasteUndoSnapshot(snapshot);
+          setState(prev => {
+            const L = createEditorLayer(`레이어 ${prev.layers.length + 1}`);
+            return {
+              ...prev,
+              layers: [
+                ...prev.layers,
+                { ...L, image: regionImg, fileName: 'pasted-image.png', imageX: sel.x, imageY: sel.y },
+              ],
+              activeLayerId: L.id,
+              tool: 'select',
+              selectedShapeIds: [],
+              selectedRasterLayerId: L.id,
+              selection: null,
+            };
+          });
+        };
+        regionImg.src = regionDataUrl;
+        return;
+      }
+
       const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
       const activeLayer = getActiveLayer(s.layers, s.activeLayerId);
       const canvas = document.createElement('canvas');
