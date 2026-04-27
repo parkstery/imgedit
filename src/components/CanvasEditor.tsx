@@ -580,7 +580,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.fillStyle = d.color;
           ctx.font = `${d.fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
           ctx.textBaseline = 'alphabetic';
-          ctx.fillText(d.text, d.x, d.y);
+          const lines = d.text.split(/\r?\n/);
+          const lineHeight = Math.max(1, d.fontSize * 1.25);
+          lines.forEach((line, i) => {
+            ctx.fillText(line, d.x, d.y + i * lineHeight);
+          });
         } else {
           ctx.strokeStyle = d.color;
           ctx.lineWidth = Math.max(1, 1 / state.zoom);

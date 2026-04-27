@@ -9,6 +9,14 @@ function setTextFont(ctx: CanvasRenderingContext2D, fontSize: number) {
   ctx.font = `${fontSize}px ${CANVAS_TEXT_FONT_STACK}`;
 }
 
+function splitTextLines(text: string): string[] {
+  return text.split(/\r?\n/);
+}
+
+function getTextLineHeight(fontSize: number): number {
+  return Math.max(1, fontSize * 1.25);
+}
+
 export function getLineDashPattern(style: LineStyle, lineWidth: number): number[] {
   const u = Math.max(1, lineWidth);
   switch (style) {
@@ -72,13 +80,17 @@ function applyShapeRotationTransform(
 export function fillTextShapeOnContext(ctx: CanvasRenderingContext2D, shape: Shape) {
   if (shape.type !== 'text' || shape.text == null || shape.fontSize == null) return;
   const fs = Math.max(1, shape.fontSize);
+  const lines = splitTextLines(shape.text);
+  const lineHeight = getTextLineHeight(fs);
   ctx.save();
   applyShapeRotationTransform(ctx, shape);
   ctx.globalAlpha = 1;
   ctx.fillStyle = shape.color;
   setTextFont(ctx, fs);
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(shape.text, shape.x1, shape.y1);
+  lines.forEach((line, i) => {
+    ctx.fillText(line, shape.x1, shape.y1 + i * lineHeight);
+  });
   ctx.restore();
 }
 
@@ -88,18 +100,29 @@ export function measureTextShapeBounds(shape: Shape): Rect | null {
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d');
   if (!ctx) return null;
-  setTextFont(ctx, shape.fontSize);
-  const m = ctx.measureText(shape.text);
-  const left = shape.x1 + (m.actualBoundingBoxLeft ?? 0);
-  const right = shape.x1 + (m.actualBoundingBoxRight ?? m.width);
-  const ascent = m.actualBoundingBoxAscent ?? shape.fontSize * 0.72;
-  const descent = m.actualBoundingBoxDescent ?? shape.fontSize * 0.28;
-  const top = shape.y1 - ascent;
-  const bottom = shape.y1 + descent;
+  const fs = Math.max(1, shape.fontSize);
+  const lines = splitTextLines(shape.text);
+  const lineHeight = getTextLineHeight(fs);
+  setTextFont(ctx, fs);
+  let minLeft = 0;
+  let maxRight = 0;
+  let firstAscent = fs * 0.72;
+  let lastDescent = fs * 0.28;
+  lines.forEach((line, i) => {
+    const m = ctx.measureText(line);
+    const left = m.actualBoundingBoxLeft ?? 0;
+    const right = m.actualBoundingBoxRight ?? m.width;
+    minLeft = Math.min(minLeft, left);
+    maxRight = Math.max(maxRight, right);
+    if (i === 0) firstAscent = m.actualBoundingBoxAscent ?? firstAscent;
+    if (i === lines.length - 1) lastDescent = m.actualBoundingBoxDescent ?? lastDescent;
+  });
+  const top = shape.y1 - firstAscent;
+  const bottom = shape.y1 + (lines.length - 1) * lineHeight + lastDescent;
   return {
-    x: left,
+    x: shape.x1 + minLeft,
     y: top,
-    width: Math.max(1, right - left),
+    width: Math.max(1, maxRight - minLeft),
     height: Math.max(1, bottom - top),
   };
 }

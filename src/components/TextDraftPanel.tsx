@@ -14,7 +14,7 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
   setState,
   onTextCommitted,
 }) => {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const d = state.textDraft;
 
   const commit = useCallback(() => {
@@ -82,11 +82,9 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
         </span>
       </div>
       <div className="flex-1 min-w-0 w-full min-h-[2.75rem] flex items-center">
-        <input
+        <textarea
           ref={inputRef}
           id="text-draft-input"
-          type="text"
-          autoComplete="off"
           autoFocus
           dir="ltr"
           value={d.text}
@@ -104,15 +102,16 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
               cancel();
               return;
             }
-            if (e.key === 'Enter') {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
               e.preventDefault();
               commit();
             }
           }}
           spellCheck={false}
           lang="ko"
-          placeholder="여기에 입력 후 확인 또는 Enter"
-          className="box-border w-full min-w-0 rounded border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-sm text-left outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/25 sm:min-w-[14rem]"
+          rows={3}
+          placeholder="여기에 여러 줄 입력 (Ctrl+Enter로 확정)"
+          className="box-border w-full min-w-0 rounded border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-sm text-left outline-none resize-y focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/25 sm:min-w-[14rem]"
           style={{ fontFamily: CANVAS_TEXT_FONT_STACK, color: d.color }}
         />
       </div>
@@ -132,7 +131,7 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
           취소
         </button>
         <span className="hidden lg:inline text-[10px] text-neutral-500 max-w-[200px]">
-          Enter · Ctrl+Enter 확정 · Esc 취소
+          Enter 줄바꿈 · Ctrl+Enter 확정 · Esc 취소
         </span>
       </div>
     </div>
