@@ -687,52 +687,53 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             shortcut="Ctrl+V"
           />
         </div>
-        <div className="flex items-center gap-0.5 pl-2 pr-1 py-1 ml-1 border-l border-neutral-700 shrink-0 lg:ml-1">
+      </div>
+
+      <div className="flex items-center gap-0.5 border-t border-neutral-700 mt-1 pt-1 -mx-2 px-2">
+        <button
+          ref={advancedColorAnchorRef}
+          type="button"
+          onClick={() => setAdvancedColorOpen(true)}
+          className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          title="고급 색상 선택"
+          aria-label="고급 색상 선택"
+          aria-haspopup="dialog"
+          aria-expanded={advancedColorOpen}
+        >
+          <div className="absolute inset-0 bg-[conic-gradient(from_0deg,red,yellow,lime,cyan,blue,magenta,red)]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-white/45" />
+          <div className="absolute inset-0 flex items-center justify-center text-white/90 pointer-events-none">
+            <Palette size={12} />
+          </div>
+        </button>
+        <AdvancedColorWindow
+          isOpen={advancedColorOpen}
+          anchorRef={advancedColorAnchorRef}
+          color={state.color}
+          onColorChange={onColorChange}
+          onRequestClose={() => setAdvancedColorOpen(false)}
+        />
+        <input
+          type="text"
+          readOnly
+          value={state.color.toLowerCase()}
+          title="현재 색상 HEX 값"
+          className="w-24 h-6 bg-neutral-900 border border-neutral-700 rounded px-1 text-[15px] leading-none text-neutral-200 font-mono select-text cursor-text"
+        />
+        {PAINT_PALETTE.map((c) => (
           <button
-            ref={advancedColorAnchorRef}
+            key={c}
             type="button"
-            onClick={() => setAdvancedColorOpen(true)}
-            className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            title="고급 색상 선택"
-            aria-label="고급 색상 선택"
-            aria-haspopup="dialog"
-            aria-expanded={advancedColorOpen}
-          >
-            <div className="absolute inset-0 bg-[conic-gradient(from_0deg,red,yellow,lime,cyan,blue,magenta,red)]" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-white/45" />
-            <div className="absolute inset-0 flex items-center justify-center text-white/90 pointer-events-none">
-              <Palette size={12} />
-            </div>
-          </button>
-          <AdvancedColorWindow
-            isOpen={advancedColorOpen}
-            anchorRef={advancedColorAnchorRef}
-            color={state.color}
-            onColorChange={onColorChange}
-            onRequestClose={() => setAdvancedColorOpen(false)}
+            title={c}
+            onClick={() => onColorChange(c)}
+            className={cn(
+              'w-4 h-4 rounded-sm border border-neutral-600 shrink-0',
+              'hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500',
+              state.color.toLowerCase() === c.toLowerCase() && 'ring-2 ring-blue-400'
+            )}
+            style={{ backgroundColor: c }}
           />
-          <input
-            type="text"
-            readOnly
-            value={state.color.toLowerCase()}
-            title="현재 색상 HEX 값"
-            className="w-24 h-6 bg-neutral-900 border border-neutral-700 rounded px-1 text-[15px] leading-none text-neutral-200 font-mono select-text cursor-text"
-          />
-          {PAINT_PALETTE.map((c) => (
-            <button
-              key={c}
-              type="button"
-              title={c}
-              onClick={() => onColorChange(c)}
-              className={cn(
-                'w-4 h-4 rounded-sm border border-neutral-600 shrink-0',
-                'hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500',
-                state.color.toLowerCase() === c.toLowerCase() && 'ring-2 ring-blue-400'
-              )}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-        </div>
+        ))}
       </div>
     </div>
   );
