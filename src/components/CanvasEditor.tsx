@@ -161,6 +161,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   } | null>(null);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
+  const selectionMoveStateRef = useRef<{
+    kind: 'rect' | 'circle';
+    startImagePoint: Point;
+    startRect: Rect | null;
+    startCircle: { cx: number; cy: number; r: number } | null;
+  } | null>(null);
   /** 원형 영역: 1·2클릭이 지름의 양끝(임의 방향), 거리=지름 */
   const marqueeCircleAnchorRef = useRef<Point | null>(null);
   const marqueeCirclePreviewRef = useRef<Point | null>(null);
@@ -1257,6 +1263,29 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           }));
         }
       } else if (state.tool === 'marquee' && documentHasRaster(state.layers)) {
+        const imgPos = toImageCoords(pos);
+        const s = state.selection;
+        if (
+          s &&
+          imgPos.x >= s.x &&
+          imgPos.x <= s.x + s.width &&
+          imgPos.y >= s.y &&
+          imgPos.y <= s.y + s.height
+        ) {
+          selectionMoveStateRef.current = {
+            kind: 'rect',
+            startImagePoint: imgPos,
+            startRect: { ...s },
+            startCircle: null,
+          };
+          setState(prev => ({
+            ...prev,
+            isSelecting: false,
+            selectedShapeIds: [],
+            selectedRasterLayerId: null,
+          }));
+          return;
+        }
         setState(prev => ({
           ...prev,
           isSelecting: true,
@@ -1267,6 +1296,26 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }));
       } else if (state.tool === 'marqueeCircle' && documentHasRaster(state.layers)) {
         const imgPosCircle = toImageCoords(pos);
+        const sc0 = state.selectionCircle;
+        if (
+          marqueeCircleAnchorRef.current == null &&
+          sc0 &&
+          Math.hypot(imgPosCircle.x - sc0.cx, imgPosCircle.y - sc0.cy) <= sc0.r
+        ) {
+          selectionMoveStateRef.current = {
+            kind: 'circle',
+            startImagePoint: imgPosCircle,
+            startRect: null,
+            startCircle: { ...sc0 },
+          };
+          setState(prev => ({
+            ...prev,
+            isSelecting: false,
+            selectedShapeIds: [],
+            selectedRasterLayerId: null,
+          }));
+          return;
+        }
         if (marqueeCircleAnchorRef.current == null) {
           marqueeCircleAnchorRef.current = { x: imgPosCircle.x, y: imgPosCircle.y };
           marqueeCirclePreviewRef.current = { x: imgPosCircle.x, y: imgPosCircle.y };
@@ -1581,6 +1630,37 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       }));
       return;
     }
+    if (selectionMoveStateRef.current) {
+      const st = selectionMoveStateRef.current;
+      const current = toImageCoords(pos);
+      const dx = current.x - st.startImagePoint.x;
+      const dy = current.y - st.startImagePoint.y;
+      setState(prev => ({
+        ...prev,
+        ...(st.kind === 'rect' && st.startRect
+          ? {
+              selection: {
+                x: st.startRect.x + dx,
+                y: st.startRect.y + dy,
+                width: st.startRect.width,
+                height: st.startRect.height,
+              },
+              selectionCircle: null,
+            }
+          : {}),
+        ...(st.kind === 'circle' && st.startCircle
+          ? {
+              selection: null,
+              selectionCircle: {
+                cx: st.startCircle.cx + dx,
+                cy: st.startCircle.cy + dy,
+                r: st.startCircle.r,
+              },
+            }
+          : {}),
+      }));
+      return;
+    }
 
     if (
       state.tool === 'select' &&
@@ -1767,6 +1847,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       if (hasMoved) {
         onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 이동');
       }
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+    if (selectionMoveStateRef.current) {
+      selectionMoveStateRef.current = null;
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
