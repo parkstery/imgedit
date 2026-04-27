@@ -120,6 +120,8 @@ export interface EditorState {
   color: string;
   lineWidth: number;
   lineStyle: LineStyle;
+  /** 지우개 도구 브러시 크기(px) */
+  eraserSize: number;
   /** 텍스트 도구 글자 크기(px) */
   textFontSize: number;
   /** 텍스트 도구 기본 글자 모양 */

@@ -49,6 +49,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   color: '#ff0000',
   lineWidth: 2,
   lineStyle: 'solid',
+  eraserSize: 24,
   textFontSize: 24,
   textBold: false,
   textItalic: false,
@@ -405,6 +406,8 @@ export default function App() {
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
   const handleLineStyleChange = (lineStyle: EditorState['lineStyle']) =>
     setState(prev => ({ ...prev, lineStyle }));
+  const handleEraserSizeChange = (eraserSize: number) =>
+    setState(prev => ({ ...prev, eraserSize: Math.max(2, Math.min(200, Math.round(eraserSize))) }));
   const handleTextFontSizeChange = (textFontSize: number) => {
     const next = Math.max(8, Math.min(256, Math.round(textFontSize)));
     setState(prev => ({
@@ -1498,6 +1501,7 @@ export default function App() {
         onColorChange={handleColorChange}
         onLineWidthChange={handleLineWidthChange}
         onLineStyleChange={handleLineStyleChange}
+        onEraserSizeChange={handleEraserSizeChange}
         onTextFontSizeChange={handleTextFontSizeChange}
         onTextStyleChange={handleTextStyleChange}
         onFillToleranceChange={handleFillToleranceChange}

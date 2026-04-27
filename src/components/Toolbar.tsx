@@ -170,6 +170,7 @@ interface ToolbarProps {
   onColorChange: (color: string) => void;
   onLineWidthChange: (lineWidth: number) => void;
   onLineStyleChange: (lineStyle: LineStyle) => void;
+  onEraserSizeChange: (eraserSize: number) => void;
   onTextFontSizeChange: (px: number) => void;
   onTextStyleChange: (next: Partial<Pick<EditorState, 'textBold' | 'textItalic' | 'textUnderline'>>) => void;
   onFillToleranceChange: (tolerance: number) => void;
@@ -215,6 +216,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onColorChange,
   onLineWidthChange,
   onLineStyleChange,
+  onEraserSizeChange,
   onTextFontSizeChange,
   onTextStyleChange,
   onFillToleranceChange,
@@ -478,6 +480,21 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               />
               <span className="text-[10px] text-neutral-400 whitespace-nowrap">알파 무시</span>
             </label>
+          </div>
+        )}
+        {state.tool === 'eraser' && (
+          <div className="flex items-center gap-1 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0">
+            <span className="text-[10px] text-neutral-400 whitespace-nowrap">지우개 크기</span>
+            <input
+              type="number"
+              min={2}
+              max={200}
+              step={1}
+              value={state.eraserSize}
+              onChange={(e) => onEraserSizeChange(parseInt(e.target.value || '24', 10))}
+              className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              title="지우개 크기(px)"
+            />
           </div>
         )}
         

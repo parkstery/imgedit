@@ -256,7 +256,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(src, 0, 0);
-      const sizePx = Math.max(2, state.lineWidth * 2);
+      const sizePx = Math.max(2, state.eraserSize);
       ctx.save();
       ctx.globalCompositeOperation = 'destination-out';
       ctx.lineCap = 'round';
@@ -287,7 +287,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       nextImg.onerror = () => {};
       nextImg.src = dataUrl;
     },
-    [docToLayerImageLocal, setState, state.layers, state.lineWidth],
+    [docToLayerImageLocal, setState, state.eraserSize, state.layers],
   );
 
   const commitPolylineDraft = useCallback(() => {
