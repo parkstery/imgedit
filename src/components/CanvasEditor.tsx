@@ -12,6 +12,7 @@ import {
   cloneShape,
   translateShape,
   getOrientedHandles,
+  getShapeBounds,
   hitTestHandle,
   applyResize,
   applyRotation,
@@ -132,6 +133,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
+  /** 선택된 래스터: 도형과 동일한 코너·엣지 드래그로 비율/크기 조절 */
+  const rasterResizeStateRef = useRef<{
+    layerId: string;
+    handle: ResizeHandleId;
+    startBoundsShape: Shape;
+    startImageDataUrl: string;
+    snapshotBefore: EditorLayer[];
+    hasMoved: boolean;
+  } | null>(null);
+  const rasterResizeGenRef = useRef(0);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
@@ -154,6 +165,24 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const offset = ROTATION_HANDLE_OFFSET_PX / state.zoom;
     return { shape: sh, handles: getOrientedHandles(sh, offset) };
   }, [state.selectedShapeIds, state.layers, state.zoom]);
+
+  const buildRasterBoundsShape = useCallback((lyr: EditorLayer): Shape | null => {
+    if (!lyr.image) return null;
+    const ix = lyr.imageX ?? 0;
+    const iy = lyr.imageY ?? 0;
+    const w = lyr.image.width;
+    const h = lyr.image.height;
+    return {
+      id: '__raster_bounds__',
+      type: 'rect',
+      x1: ix,
+      y1: iy,
+      x2: ix + w,
+      y2: iy + h,
+      color: '#000000',
+      lineWidth: 1,
+    };
+  }, []);
 
   const commitPolylineDraft = useCallback(() => {
     setState(prev => {
@@ -592,7 +621,40 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       state.selectedShapeIds.length === 0
     ) {
       const rl = state.layers.find(l => l.id === state.selectedRasterLayerId);
-      if (rl?.image) {
+      if (rl?.image && !rl.locked) {
+        const ix = rl.imageX ?? 0;
+        const iy = rl.imageY ?? 0;
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 1.5 / state.zoom;
+        ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
+        ctx.strokeRect(ix, iy, rl.image.width, rl.image.height);
+        ctx.setLineDash([]);
+        const bs: Shape = {
+          id: '__raster_bounds_draw__',
+          type: 'rect',
+          x1: ix,
+          y1: iy,
+          x2: ix + rl.image.width,
+          y2: iy + rl.image.height,
+          color: '#000000',
+          lineWidth: 1,
+        };
+        const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
+        const h = getOrientedHandles(bs, hOff);
+        if (h) {
+          const handleSize = HANDLE_DRAW_SIZE_PX / state.zoom;
+          ctx.lineWidth = 1 / state.zoom;
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#0891b2';
+          const drawSquare = (p: Point) => {
+            const s = handleSize;
+            ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+            ctx.strokeRect(p.x - s / 2, p.y - s / 2, s, s);
+          };
+          h.corners.forEach(c => drawSquare(c.world));
+          h.edges.forEach(ed => drawSquare(ed.world));
+        }
+      } else if (rl?.image && rl.locked) {
         const ix = rl.imageX ?? 0;
         const iy = rl.imageY ?? 0;
         ctx.strokeStyle = '#22d3ee';
@@ -885,6 +947,47 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             }
           }
         }
+        if (state.selectedRasterLayerId && state.selectedShapeIds.length === 0) {
+          const lyr = state.layers.find(l => l.id === state.selectedRasterLayerId);
+          if (lyr?.image && !lyr.locked) {
+            const boundsShape = buildRasterBoundsShape(lyr);
+            if (boundsShape) {
+              const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
+              const handles = getOrientedHandles(boundsShape, hOff);
+              const picked = hitTestHandle(handles, imgPos, HANDLE_HIT_TOL_PX / state.zoom, {
+                includeEdges: true,
+                includeRotation: false,
+              });
+              if (picked && picked.kind !== 'rotation') {
+                const c = document.createElement('canvas');
+                c.width = Math.max(1, lyr.image.width);
+                c.height = Math.max(1, lyr.image.height);
+                const x = c.getContext('2d');
+                if (x) {
+                  x.drawImage(lyr.image, 0, 0);
+                  let startImageDataUrl: string;
+                  try {
+                    startImageDataUrl = c.toDataURL();
+                  } catch {
+                    startImageDataUrl = '';
+                  }
+                  if (startImageDataUrl) {
+                    rasterResizeStateRef.current = {
+                      layerId: lyr.id,
+                      handle: picked.id as ResizeHandleId,
+                      startBoundsShape: cloneShape(boundsShape),
+                      startImageDataUrl,
+                      snapshotBefore: cloneLayersDeep(state.layers),
+                      hasMoved: false,
+                    };
+                    setState(prev => ({ ...prev, isSelecting: false, selection: null }));
+                    return;
+                  }
+                }
+              }
+            }
+          }
+        }
         const tol = 6 / state.zoom;
         const target = pickTopInteractiveTarget(state.layers, imgPos, tol);
         if (target?.kind === 'shape') {
@@ -1037,6 +1140,56 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       return;
     }
 
+    if (rasterResizeStateRef.current) {
+      const st = rasterResizeStateRef.current;
+      const current = toImageCoords(pos);
+      const updated = applyResize(st.startBoundsShape, st.handle, current, {
+        anchorAtCenter: e.altKey,
+        uniform: e.shiftKey,
+      });
+      st.hasMoved = true;
+      const b = getShapeBounds(updated);
+      if (!b || b.width < 1 || b.height < 1) return;
+      const cw = Math.max(1, Math.round(b.width));
+      const ch = Math.max(1, Math.round(b.height));
+      const gen = ++rasterResizeGenRef.current;
+      const srcImg = new Image();
+      srcImg.onload = () => {
+        if (gen !== rasterResizeGenRef.current) return;
+        const oc = document.createElement('canvas');
+        oc.width = cw;
+        oc.height = ch;
+        const octx = oc.getContext('2d');
+        if (!octx) return;
+        try {
+          octx.drawImage(srcImg, 0, 0, cw, ch);
+        } catch {
+          return;
+        }
+        let url: string;
+        try {
+          url = oc.toDataURL();
+        } catch {
+          return;
+        }
+        const out = new Image();
+        out.onload = () => {
+          if (gen !== rasterResizeGenRef.current) return;
+          setState(prev => ({
+            ...prev,
+            layers: prev.layers.map(l =>
+              l.id === st.layerId ? { ...l, image: out, imageX: b.x, imageY: b.y } : l
+            ),
+          }));
+        };
+        out.onerror = () => {};
+        out.src = url;
+      };
+      srcImg.onerror = () => {};
+      srcImg.src = st.startImageDataUrl;
+      return;
+    }
+
     if (rasterMoveStateRef.current) {
       const st = rasterMoveStateRef.current;
       const current = toImageCoords(pos);
@@ -1087,6 +1240,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           picked = hitTestHandle(active.handles, imgPos, HANDLE_HIT_TOL_PX / state.zoom, {
             includeEdges: active.shape.type !== 'text',
           });
+        }
+      } else if (state.selectedRasterLayerId && state.selectedShapeIds.length === 0) {
+        const lyr = state.layers.find(l => l.id === state.selectedRasterLayerId);
+        if (lyr?.image && !lyr.locked) {
+          const bs = buildRasterBoundsShape(lyr);
+          if (bs) {
+            const hOff = ROTATION_HANDLE_OFFSET_PX / state.zoom;
+            const handles = getOrientedHandles(bs, hOff);
+            picked = hitTestHandle(handles, imgPos, HANDLE_HIT_TOL_PX / state.zoom, {
+              includeEdges: true,
+              includeRotation: false,
+            });
+          }
         }
       }
       if (picked) {
@@ -1197,6 +1363,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const { snapshotBefore, hasMoved } = rotateStateRef.current;
       rotateStateRef.current = null;
       if (hasMoved) onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 회전');
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+    if (rasterResizeStateRef.current) {
+      const st = rasterResizeStateRef.current;
+      rasterResizeStateRef.current = null;
+      rasterResizeGenRef.current += 1;
+      if (st.hasMoved) {
+        onLayersMutation?.(st.snapshotBefore, st.layerId, '이미지 크기 조절');
+      }
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
@@ -1335,7 +1512,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ? 'cursor-paint-bucket'
           : state.tool === 'text'
             ? 'cursor-text'
-            : state.tool === 'select' && (hoverHandle || resizeStateRef.current || rotateStateRef.current)
+            : state.tool === 'select' &&
+                (hoverHandle ||
+                  resizeStateRef.current ||
+                  rotateStateRef.current ||
+                  rasterResizeStateRef.current)
               ? null
               : state.tool === 'select' &&
                 (hoveringShape || moveStateRef.current || rasterMoveStateRef.current)
@@ -1352,8 +1533,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           const sh = findShapeInLayers(state.layers, resizeStateRef.current!.shapeId);
           return { cursor: cursorForHandle(resizeStateRef.current.handle, sh?.rotation ?? 0) } as React.CSSProperties;
         }
+        if (rasterResizeStateRef.current) {
+          return {
+            cursor: cursorForHandle(rasterResizeStateRef.current.handle, 0),
+          } as React.CSSProperties;
+        }
         if (hoverHandle) {
-          const sh = findShapeInLayers(state.layers, state.selectedShapeIds[0]);
+          const sh =
+            state.selectedShapeIds.length === 1
+              ? findShapeInLayers(state.layers, state.selectedShapeIds[0])
+              : null;
           const r = sh?.rotation ?? 0;
           if (hoverHandle.kind === 'rotation') return { cursor: 'grab' } as React.CSSProperties;
           return { cursor: cursorForHandle(hoverHandle.id as ResizeHandleId, r) } as React.CSSProperties;

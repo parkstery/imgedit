@@ -237,7 +237,10 @@ export function hitTestHandle(
   handles: OrientedHandles,
   p: Point,
   tolerance: number,
-  opts: { includeEdges?: boolean } = { includeEdges: true },
+  opts: { includeEdges?: boolean; includeRotation?: boolean } = {
+    includeEdges: true,
+    includeRotation: true,
+  },
 ): PickedHandle | null {
   const t2 = tolerance * tolerance;
   const within = (a: Point, b: Point): boolean => {
@@ -245,7 +248,9 @@ export function hitTestHandle(
     const dy = a.y - b.y;
     return dx * dx + dy * dy <= t2;
   };
-  if (within(p, handles.rotationHandle)) return { kind: 'rotation', id: 'ROT' };
+  if (opts.includeRotation !== false && within(p, handles.rotationHandle)) {
+    return { kind: 'rotation', id: 'ROT' };
+  }
   for (const h of handles.corners) {
     if (within(p, h.world)) return { kind: 'corner', id: h.id };
   }
