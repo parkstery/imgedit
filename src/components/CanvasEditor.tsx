@@ -143,6 +143,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     hasMoved: boolean;
   } | null>(null);
   const rasterResizeGenRef = useRef(0);
+  /** 선택된 래스터: 회전 핸들 드래그(도형 회전과 동일 UX, Shift 시 15° 스냅) */
+  const rasterRotateStateRef = useRef<{
+    layerId: string;
+    centerX: number;
+    centerY: number;
+    startAngle: number;
+    sourceImage: HTMLImageElement;
+    srcW: number;
+    srcH: number;
+    snapshotBefore: EditorLayer[];
+    hasMoved: boolean;
+  } | null>(null);
+  const rasterRotateGenRef = useRef(0);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
@@ -653,6 +666,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           };
           h.corners.forEach(c => drawSquare(c.world));
           h.edges.forEach(ed => drawSquare(ed.world));
+          const top = {
+            x: (h.corners[0].world.x + h.corners[1].world.x) / 2,
+            y: (h.corners[0].world.y + h.corners[1].world.y) / 2,
+          };
+          ctx.beginPath();
+          ctx.moveTo(top.x, top.y);
+          ctx.lineTo(h.rotationHandle.x, h.rotationHandle.y);
+          ctx.stroke();
+          const rr = handleSize * 0.6;
+          ctx.beginPath();
+          ctx.arc(h.rotationHandle.x, h.rotationHandle.y, rr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
         }
       } else if (rl?.image && rl.locked) {
         const ix = rl.imageX ?? 0;
@@ -985,6 +1011,28 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   }
                 }
               }
+              const rotPick = hitTestHandle(handles, imgPos, HANDLE_HIT_TOL_PX / state.zoom, {
+                includeEdges: false,
+                includeRotation: true,
+              });
+              if (rotPick?.kind === 'rotation') {
+                const centerX = (lyr.imageX ?? 0) + lyr.image.width / 2;
+                const centerY = (lyr.imageY ?? 0) + lyr.image.height / 2;
+                const startAngle = Math.atan2(imgPos.y - centerY, imgPos.x - centerX);
+                rasterRotateStateRef.current = {
+                  layerId: lyr.id,
+                  centerX,
+                  centerY,
+                  startAngle,
+                  sourceImage: lyr.image,
+                  srcW: lyr.image.width,
+                  srcH: lyr.image.height,
+                  snapshotBefore: cloneLayersDeep(state.layers),
+                  hasMoved: false,
+                };
+                setState(prev => ({ ...prev, isSelecting: false, selection: null }));
+                return;
+              }
             }
           }
         }
@@ -1140,6 +1188,63 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       return;
     }
 
+    if (rasterRotateStateRef.current) {
+      const st = rasterRotateStateRef.current;
+      const current = toImageCoords(pos);
+      let rotateRad =
+        Math.atan2(current.y - st.centerY, current.x - st.centerX) - st.startAngle;
+      if (e.shiftKey) {
+        const step = Math.PI / 12;
+        rotateRad = Math.round(rotateRad / step) * step;
+      }
+      st.hasMoved = true;
+      const scaledW = st.srcW;
+      const scaledH = st.srcH;
+      const absCos = Math.abs(Math.cos(rotateRad));
+      const absSin = Math.abs(Math.sin(rotateRad));
+      const outW = Math.max(1, Math.ceil(scaledW * absCos + scaledH * absSin));
+      const outH = Math.max(1, Math.ceil(scaledW * absSin + scaledH * absCos));
+      const gen = ++rasterRotateGenRef.current;
+      const c = document.createElement('canvas');
+      c.width = outW;
+      c.height = outH;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      ctx.translate(outW / 2, outH / 2);
+      ctx.rotate(rotateRad);
+      try {
+        ctx.drawImage(st.sourceImage, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
+      } catch {
+        return;
+      }
+      let url: string;
+      try {
+        url = c.toDataURL();
+      } catch {
+        return;
+      }
+      const out = new Image();
+      out.onload = () => {
+        if (gen !== rasterRotateGenRef.current) return;
+        setState(prev => ({
+          ...prev,
+          layers: prev.layers.map(l =>
+            l.id === st.layerId
+              ? {
+                  ...l,
+                  image: out,
+                  imageX: st.centerX - outW / 2,
+                  imageY: st.centerY - outH / 2,
+                }
+              : l
+          ),
+        }));
+      };
+      out.onerror = () => {};
+      out.src = url;
+      return;
+    }
+
     if (rasterResizeStateRef.current) {
       const st = rasterResizeStateRef.current;
       const current = toImageCoords(pos);
@@ -1252,6 +1357,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               includeEdges: true,
               includeRotation: false,
             });
+            if (!picked) {
+              picked = hitTestHandle(handles, imgPos, HANDLE_HIT_TOL_PX / state.zoom, {
+                includeEdges: false,
+                includeRotation: true,
+              });
+            }
           }
         }
       }
@@ -1363,6 +1474,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const { snapshotBefore, hasMoved } = rotateStateRef.current;
       rotateStateRef.current = null;
       if (hasMoved) onLayersMutation?.(snapshotBefore, state.activeLayerId, '도형 회전');
+      setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
+      setDragStart(null);
+      return;
+    }
+    if (rasterRotateStateRef.current) {
+      const st = rasterRotateStateRef.current;
+      rasterRotateStateRef.current = null;
+      rasterRotateGenRef.current += 1;
+      if (st.hasMoved) {
+        onLayersMutation?.(st.snapshotBefore, st.layerId, '이미지 회전');
+      }
       setState(prev => ({ ...prev, isPanning: false, isSelecting: false }));
       setDragStart(null);
       return;
@@ -1516,6 +1638,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 (hoverHandle ||
                   resizeStateRef.current ||
                   rotateStateRef.current ||
+                  rasterRotateStateRef.current ||
                   rasterResizeStateRef.current)
               ? null
               : state.tool === 'select' &&
@@ -1529,6 +1652,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       style={(() => {
         if (state.tool !== 'select') return undefined;
         if (rotateStateRef.current) return { cursor: 'grabbing' } as React.CSSProperties;
+        if (rasterRotateStateRef.current) return { cursor: 'grabbing' } as React.CSSProperties;
         if (resizeStateRef.current) {
           const sh = findShapeInLayers(state.layers, resizeStateRef.current!.shapeId);
           return { cursor: cursorForHandle(resizeStateRef.current.handle, sh?.rotation ?? 0) } as React.CSSProperties;
