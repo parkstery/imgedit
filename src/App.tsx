@@ -31,8 +31,10 @@ import {
   writeFillIgnoreAlpha,
 } from './lib/fillToolStorage';
 import {
+  boundingRectOfSelectionCircle,
   createCompositeCanvas,
   cropCanvasToRegion,
+  cropCompositeToCircle,
   writeCanvasToClipboardPng,
 } from './lib/documentCapture';
 
@@ -40,6 +42,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   zoom: 1,
   position: { x: 0, y: 0 },
   selection: null,
+  selectionCircle: null,
   isSelecting: false,
   isPanning: false,
   tool: 'select',
@@ -220,6 +223,7 @@ export default function App() {
       layers: cloneLayersDeep(snap.layers),
       activeLayerId: snap.activeLayerId,
       selection: snap.selection ? { ...snap.selection } : null,
+      selectionCircle: snap.selectionCircle ? { ...snap.selectionCircle } : null,
       zoom: snap.zoom,
       position: { ...snap.position },
       selectedRasterLayerId: null,
@@ -232,6 +236,7 @@ export default function App() {
       layers: cloneLayersDeep(source.layers),
       activeLayerId: source.activeLayerId,
       selection: source.selection ? { ...source.selection } : null,
+      selectionCircle: source.selectionCircle ? { ...source.selectionCircle } : null,
       zoom: source.zoom,
       position: { ...source.position },
     };
@@ -269,6 +274,7 @@ export default function App() {
               : l
           ),
           selection: null,
+          selectionCircle: null,
           selectedShapeIds: [],
           selectedRasterLayerId: null,
           position: { x: 50, y: 50 },
@@ -373,15 +379,16 @@ export default function App() {
               fontSize: prev.textFontSize,
             }
           : null;
-      const keepPick =
-        tool === 'select' || tool === 'marquee';
+      const keepMarqueeUi =
+        tool === 'select' || tool === 'marquee' || tool === 'marqueeCircle';
       return {
         ...prev,
         tool,
-        selection: keepPick ? prev.selection : null,
+        selection: tool === 'select' || tool === 'marquee' ? prev.selection : null,
+        selectionCircle: tool === 'select' || tool === 'marqueeCircle' ? prev.selectionCircle : null,
         isSelecting: false,
-        selectedShapeIds: keepPick ? prev.selectedShapeIds : [],
-        selectedRasterLayerId: keepPick ? prev.selectedRasterLayerId : null,
+        selectedShapeIds: keepMarqueeUi ? prev.selectedShapeIds : [],
+        selectedRasterLayerId: keepMarqueeUi ? prev.selectedRasterLayerId : null,
         polylineDraft: null,
         freehandDraft: null,
         textDraft,
@@ -765,6 +772,7 @@ export default function App() {
         ...prev,
         layers: nextLayers,
         selection: null,
+        selectionCircle: null,
         selectedRasterLayerId: null,
       }));
       setIsResizeModalOpen(false);
@@ -853,6 +861,7 @@ export default function App() {
         ...prev,
         layers: nextLayers,
         selection: null,
+        selectionCircle: null,
         selectedRasterLayerId: null,
       }));
       setIsCanvasSizeModalOpen(false);
@@ -864,6 +873,19 @@ export default function App() {
     if (!full) return null;
     return cropCanvasToRegion(full, rect);
   }, [state.layers]);
+
+  /** 사각 점선 또는 원 점선 선택 영역을 PNG로 자름 */
+  const getSelectionOrCircleCanvas = useCallback((): HTMLCanvasElement | null => {
+    const full = createCompositeCanvas(state.layers);
+    if (!full) return null;
+    if (state.selectionCircle && state.selectionCircle.r >= 0.5) {
+      return cropCompositeToCircle(full, state.selectionCircle);
+    }
+    if (state.selection && state.selection.width >= 1 && state.selection.height >= 1) {
+      return cropCanvasToRegion(full, state.selection);
+    }
+    return null;
+  }, [state.layers, state.selection, state.selectionCircle]);
 
   const copyCanvasToSystemClipboard = useCallback(async (canvas: HTMLCanvasElement) => {
     return new Promise<void>((resolve, reject) => {
@@ -930,28 +952,35 @@ export default function App() {
       return;
     }
 
-    if (!state.selection) return;
-    const canvas = getSelectionCanvas(state.selection);
+    if (!state.selection && !state.selectionCircle) return;
+    const canvas = getSelectionOrCircleCanvas();
     if (!canvas) return;
-    internalClipboardRef.current = { kind: 'selection', rect: { ...state.selection } };
+    const rectPayload =
+      state.selection ??
+      (state.selectionCircle ? boundingRectOfSelectionCircle(state.selectionCircle) : null);
+    if (!rectPayload) return;
+    internalClipboardRef.current = { kind: 'selection', rect: { ...rectPayload } };
     try {
       await copyCanvasToSystemClipboard(canvas);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
-  }, [state, getSelectionCanvas, copyCanvasToSystemClipboard]);
+  }, [state, getSelectionOrCircleCanvas, copyCanvasToSystemClipboard]);
 
   const handleCaptureSelection = useCallback(async () => {
-    const sel = state.selection;
-    if (!sel || sel.width < 2 || sel.height < 2 || !documentHasRaster(state.layers)) return;
-    const canvas = getSelectionCanvas(sel);
+    if (!documentHasRaster(state.layers)) return;
+    const sel =
+      state.selection ??
+      (state.selectionCircle ? boundingRectOfSelectionCircle(state.selectionCircle) : null);
+    if (!sel || sel.width < 2 || sel.height < 2) return;
+    const canvas = getSelectionOrCircleCanvas();
     if (!canvas) return;
     try {
       await writeCanvasToClipboardPng(canvas);
     } catch (err) {
       console.error('선택 영역 캡처 실패:', err);
     }
-  }, [state.selection, state.layers, getSelectionCanvas]);
+  }, [state.selection, state.selectionCircle, state.layers, getSelectionOrCircleCanvas]);
 
   const handleCaptureFullDocument = useCallback(async () => {
     if (!documentHasRaster(state.layers)) return;
@@ -984,7 +1013,7 @@ export default function App() {
   );
 
   const handleCut = useCallback(async () => {
-    if (!state.selection || !documentHasRaster(state.layers)) return;
+    if ((!state.selection && !state.selectionCircle) || !documentHasRaster(state.layers)) return;
 
     try {
       await handleCopy();
@@ -1000,7 +1029,17 @@ export default function App() {
       if (activeLayer?.image) {
         drawRasterImageOnContext(ctx, activeLayer);
       }
-      ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+      if (state.selection) {
+        ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+      } else if (state.selectionCircle) {
+        const { cx, cy, r } = state.selectionCircle;
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
       const newImg = new Image();
       newImg.onload = () => {
@@ -1013,6 +1052,7 @@ export default function App() {
             activeLayer?.fileName ?? getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
           ),
           selection: null,
+          selectionCircle: null,
           selectedRasterLayerId: null,
         }));
       };
@@ -1020,7 +1060,7 @@ export default function App() {
     } catch (err) {
       console.error('Cut failed:', err);
     }
-  }, [state.selection, state.layers, handleCopy]);
+  }, [state.selection, state.selectionCircle, state.layers, handleCopy]);
 
   const pasteFromInternalClipboard = useCallback(async (): Promise<boolean> => {
     const payload = internalClipboardRef.current;
@@ -1054,6 +1094,7 @@ export default function App() {
         selectedShapeIds: insertedIds,
         selectedRasterLayerId: null,
         selection: null,
+        selectionCircle: null,
       }));
       handleLayersMutation(before, s.activeLayerId, '도형 붙여넣기');
       return true;
@@ -1110,6 +1151,7 @@ export default function App() {
           selectedShapeIds: [],
           selectedRasterLayerId: prev.activeLayerId,
           selection: null,
+          selectionCircle: null,
         }));
       };
       merged.src = canvas.toDataURL();
@@ -1118,7 +1160,12 @@ export default function App() {
     }
 
     if (payload.kind === 'selection') {
-      setState(prev => ({ ...prev, selection: { ...payload.rect }, tool: 'marquee' }));
+      setState(prev => ({
+        ...prev,
+        selection: { ...payload.rect },
+        selectionCircle: null,
+        tool: 'marquee',
+      }));
       return false;
     }
     return false;
@@ -1131,6 +1178,7 @@ export default function App() {
       layers: cloneLayersDeep(s.layers),
       activeLayerId: s.activeLayerId,
       selection: s.selection ? { ...s.selection } : null,
+      selectionCircle: s.selectionCircle ? { ...s.selectionCircle } : null,
       zoom: s.zoom,
       position: { ...s.position },
     });
@@ -1151,6 +1199,7 @@ export default function App() {
           zoom: 1,
           position: { x: 50, y: 50 },
           selection: null,
+          selectionCircle: null,
           selectedShapeIds: [],
           selectedRasterLayerId: L0.id,
         };
@@ -1220,6 +1269,7 @@ export default function App() {
               : l
           ),
           selection: null,
+          selectionCircle: null,
           selectedShapeIds: [],
           selectedRasterLayerId: prev.activeLayerId,
         }));
@@ -1331,7 +1381,12 @@ export default function App() {
           case 'c':
             {
               const s = stateRef.current;
-              if (s.selection || s.selectedRasterLayerId || s.selectedShapeIds.length > 0) {
+              if (
+                s.selection ||
+                s.selectionCircle ||
+                s.selectedRasterLayerId ||
+                s.selectedShapeIds.length > 0
+              ) {
                 e.preventDefault();
                 void handleCopy();
               }
@@ -1340,7 +1395,7 @@ export default function App() {
           case 'x':
             {
               const s = stateRef.current;
-              if (s.selection) {
+              if (s.selection || s.selectionCircle) {
                 e.preventDefault();
                 void handleCut();
               }

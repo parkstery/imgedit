@@ -80,6 +80,31 @@ function SelectionBoxToolbarIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+/** 점선 원 — 원형 영역 선택 도구 */
+function SelectionCircleToolbarIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="shrink-0"
+      aria-hidden
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="8.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeDasharray="3.5 3.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function PolylineToolbarIcon({ size = 18 }: { size?: number }) {
   return (
     <svg
@@ -235,9 +260,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="문서 점선 선택 영역 캡처(클립보드)"
           disabled={
             !documentHasRaster(state.layers) ||
-            !state.selection ||
-            state.selection.width < 2 ||
-            state.selection.height < 2
+            ((!state.selection || state.selection.width < 2 || state.selection.height < 2) &&
+              (!state.selectionCircle || state.selectionCircle.r < 1))
           }
         />
         <ToolbarButton
@@ -265,8 +289,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton
           onClick={() => onToolChange('marquee')}
           icon={<SelectionBoxToolbarIcon size={18} />}
-          label="영역 선택 (점선 박스)"
+          label="영역 선택 (점선 사각형)"
           active={state.tool === 'marquee'}
+        />
+        <ToolbarButton
+          onClick={() => onToolChange('marqueeCircle')}
+          icon={<SelectionCircleToolbarIcon size={18} />}
+          label="영역 선택 (점선 원)"
+          active={state.tool === 'marqueeCircle'}
         />
         <ToolbarButton 
           onClick={() => onToolChange('freehand')} 
@@ -529,14 +559,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onClick={onCopy} 
             icon={<Copy size={18} />} 
             label="복사" 
-            disabled={!state.selection && state.selectedShapeIds.length === 0 && !state.selectedRasterLayerId} 
+            disabled={
+              !state.selection &&
+              !state.selectionCircle &&
+              state.selectedShapeIds.length === 0 &&
+              !state.selectedRasterLayerId
+            }
             shortcut="Ctrl+C"
           />
           <ToolbarButton 
             onClick={onCut} 
             icon={<Scissors size={18} />} 
             label="잘라내기" 
-            disabled={!state.selection} 
+            disabled={!state.selection && !state.selectionCircle}
             shortcut="Ctrl+X"
           />
           <ToolbarButton 

@@ -1,4 +1,4 @@
-import type { EditorLayer, Rect } from '../types';
+import type { EditorLayer, Rect, SelectionCircle } from '../types';
 import { drawLayerStackToContext, getDocumentCanvasSize } from './layers';
 
 /** 합성 문서를 한 장의 캔버스로 그립니다. */
@@ -33,6 +33,39 @@ export function cropCanvasToRegion(full: HTMLCanvasElement, rect: Rect): HTMLCan
   const ctx = out.getContext('2d');
   if (!ctx) return null;
   ctx.drawImage(full, r.x, r.y, r.width, r.height, 0, 0, out.width, out.height);
+  return out;
+}
+
+/** 원과 문서 경계의 교집합을 잘라 PNG 알파로 원 밖을 투명 처리 */
+export function boundingRectOfSelectionCircle(c: SelectionCircle): Rect {
+  return { x: c.cx - c.r, y: c.cy - c.r, width: 2 * c.r, height: 2 * c.r };
+}
+
+export function cropCompositeToCircle(full: HTMLCanvasElement, circle: SelectionCircle): HTMLCanvasElement | null {
+  const { cx, cy, r } = circle;
+  if (r < 0.5) return null;
+  const dw = full.width;
+  const dh = full.height;
+  const left = Math.max(0, Math.floor(cx - r));
+  const top = Math.max(0, Math.floor(cy - r));
+  const right = Math.min(dw, Math.ceil(cx + r));
+  const bottom = Math.min(dh, Math.ceil(cy + r));
+  const rw = right - left;
+  const rh = bottom - top;
+  if (rw < 1 || rh < 1) return null;
+  const out = document.createElement('canvas');
+  out.width = rw;
+  out.height = rh;
+  const ctx = out.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(full, left, top, rw, rh, 0, 0, rw, rh);
+  const lx = cx - left;
+  const ly = cy - top;
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.beginPath();
+  ctx.arc(lx, ly, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
   return out;
 }
 

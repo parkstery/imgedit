@@ -10,10 +10,19 @@ export interface Rect {
   height: number;
 }
 
+/** 점선 원(복사·잘라내기·영역 캡처용). 중심+반지름은 selectionCircle에 저장 */
+export interface SelectionCircle {
+  cx: number;
+  cy: number;
+  r: number;
+}
+
 export type Tool =
   | 'select'
   /** 파란 점선 사각형(복사·잘라내기·선택 캡처용 영역) */
   | 'marquee'
+  /** 파란 점선 원(복사·잘라내기·선택 캡처용) */
+  | 'marqueeCircle'
   | 'freehand'
   | 'line'
   | 'polyline'
@@ -86,6 +95,8 @@ export interface EditorState {
   zoom: number;
   position: Point;
   selection: Rect | null;
+  /** 원형 영역 선택(복사·잘라내기). marqueeCircle 도구일 때 사용. 사각 selection 과 동시에 쓰지 않음 */
+  selectionCircle: SelectionCircle | null;
   isSelecting: boolean;
   isPanning: boolean;
   tool: Tool;
@@ -117,6 +128,7 @@ export interface ImageUndoSnapshot {
   layers: EditorLayer[];
   activeLayerId: string;
   selection: Rect | null;
+  selectionCircle: SelectionCircle | null;
   zoom: number;
   position: Point;
 }
