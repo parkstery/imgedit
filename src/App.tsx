@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Toolbar } from './components/Toolbar';
 import { CanvasEditor } from './components/CanvasEditor';
 import { StatusBar } from './components/StatusBar';
@@ -9,14 +9,18 @@ import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
 import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry, Shape, EditorLayer } from './types';
 import {
+  bakeRasterLayerVisualToAxisAligned,
   cloneLayersDeep,
   createEditorLayer,
   documentHasRaster,
   drawLayerStackToContext,
+  drawRasterImageOnContext,
+  findShapeInLayers,
   getActiveLayer,
   getDocumentCanvasSize,
   mapLayersReplaceActiveLayerRaster,
   mapLayersReplaceActiveShapes,
+  mapLayersUpdateShapeById,
   totalShapeCount,
 } from './lib/layers';
 import { getShapeRotationCenter } from './lib/drawShapes';
@@ -409,56 +413,97 @@ export default function App() {
     const layer = s.layers.find(l => l.id === s.selectedRasterLayerId);
     if (!layer?.image) return;
 
-    const scale = Math.max(0.1, opts.scale ?? 1);
-    const rotateRad = ((opts.rotateDeg ?? 0) * Math.PI) / 180;
-    const srcW = layer.image.width;
-    const srcH = layer.image.height;
-    if (srcW <= 0 || srcH <= 0) return;
+    const hasScale = opts.scale != null;
+    const rotateDeg = opts.rotateDeg ?? 0;
+    const rotateRad = (rotateDeg * Math.PI) / 180;
+    const hasRotate = opts.rotateDeg != null && rotateRad !== 0;
 
-    const scaledW = Math.max(1, Math.round(srcW * scale));
-    const scaledH = Math.max(1, Math.round(srcH * scale));
-    const absCos = Math.abs(Math.cos(rotateRad));
-    const absSin = Math.abs(Math.sin(rotateRad));
-    const outW = Math.max(1, Math.ceil(scaledW * absCos + scaledH * absSin));
-    const outH = Math.max(1, Math.ceil(scaledW * absSin + scaledH * absCos));
+    if (!hasScale && !hasRotate) return;
 
-    const c = document.createElement('canvas');
-    c.width = outW;
-    c.height = outH;
-    const ctx = c.getContext('2d');
-    if (!ctx) return;
-    ctx.translate(outW / 2, outH / 2);
-    if (rotateRad) ctx.rotate(rotateRad);
-    ctx.drawImage(layer.image, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
-
-    let dataUrl: string;
-    try {
-      dataUrl = c.toDataURL();
-    } catch {
-      return;
-    }
-    const before = cloneLayersDeep(s.layers);
-    const centerX = (layer.imageX ?? 0) + srcW / 2;
-    const centerY = (layer.imageY ?? 0) + srcH / 2;
-
-    const next = new Image();
-    next.onload = () => {
+    if (!hasScale && hasRotate) {
+      const before = cloneLayersDeep(s.layers);
       setState(prev => ({
         ...prev,
         layers: prev.layers.map(l =>
-          l.id === layer.id
-            ? {
-                ...l,
-                image: next,
-                imageX: centerX - outW / 2,
-                imageY: centerY - outH / 2,
-              }
-            : l
+          l.id === layer.id ? { ...l, imageRotation: (l.imageRotation ?? 0) + rotateRad } : l
         ),
       }));
-      handleLayersMutation(before, s.activeLayerId, '이미지 변형');
+      handleLayersMutation(before, s.activeLayerId, '이미지 회전');
+      return;
+    }
+
+    const scale = Math.max(0.1, opts.scale ?? 1);
+    const snapshotBefore = cloneLayersDeep(s.layers);
+
+    const applyPixelRasterTransform = (L: EditorLayer) => {
+      if (!L.image) return;
+      const srcW = L.image.width;
+      const srcH = L.image.height;
+      if (srcW <= 0 || srcH <= 0) return;
+
+      const scaledW = Math.max(1, Math.round(srcW * scale));
+      const scaledH = Math.max(1, Math.round(srcH * scale));
+      const absCos = Math.abs(Math.cos(rotateRad));
+      const absSin = Math.abs(Math.sin(rotateRad));
+      const outW = Math.max(1, Math.ceil(scaledW * absCos + scaledH * absSin));
+      const outH = Math.max(1, Math.ceil(scaledW * absSin + scaledH * absCos));
+
+      const c = document.createElement('canvas');
+      c.width = outW;
+      c.height = outH;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      ctx.translate(outW / 2, outH / 2);
+      if (rotateRad) ctx.rotate(rotateRad);
+      ctx.drawImage(L.image, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
+
+      let dataUrl: string;
+      try {
+        dataUrl = c.toDataURL();
+      } catch {
+        return;
+      }
+      const centerX = (L.imageX ?? 0) + srcW / 2;
+      const centerY = (L.imageY ?? 0) + srcH / 2;
+
+      const next = new Image();
+      next.onload = () => {
+        setState(prev => ({
+          ...prev,
+          layers: prev.layers.map(l =>
+            l.id === L.id
+              ? {
+                  ...l,
+                  image: next,
+                  imageX: centerX - outW / 2,
+                  imageY: centerY - outH / 2,
+                  imageRotation: undefined,
+                }
+              : l
+          ),
+        }));
+        handleLayersMutation(snapshotBefore, s.activeLayerId, '이미지 변형');
+      };
+      next.src = dataUrl;
     };
-    next.src = dataUrl;
+
+    const baseRot = layer.imageRotation ?? 0;
+    if (baseRot !== 0) {
+      void bakeRasterLayerVisualToAxisAligned(layer).then(baked => {
+        if (!baked) return;
+        const merged: EditorLayer = {
+          ...layer,
+          image: baked.image,
+          imageX: baked.imageX,
+          imageY: baked.imageY,
+          imageRotation: undefined,
+        };
+        applyPixelRasterTransform(merged);
+      });
+      return;
+    }
+
+    applyPixelRasterTransform(layer);
   }, [handleLayersMutation]);
 
   const transformSelectedShapes = useCallback((opts: { scale?: number; rotateDeg?: number }) => {
@@ -562,6 +607,51 @@ export default function App() {
       transformSelectedShapes({ rotateDeg: 15 });
     }
   }, [transformSelectedRaster, transformSelectedShapes]);
+
+  const handleSelectionRotationDegCommit = useCallback(
+    (deg: number) => {
+      const rad = (deg * Math.PI) / 180;
+      const s = stateRef.current;
+      if (s.selectedRasterLayerId) {
+        const before = cloneLayersDeep(s.layers);
+        setState(prev => ({
+          ...prev,
+          layers: prev.layers.map(l =>
+            l.id === s.selectedRasterLayerId ? { ...l, imageRotation: rad } : l
+          ),
+        }));
+        handleLayersMutation(before, s.activeLayerId, '이미지 회전');
+        return;
+      }
+      if (s.selectedShapeIds.length === 1) {
+        const sid = s.selectedShapeIds[0];
+        const target = findShapeInLayers(s.layers, sid);
+        if (!target) return;
+        const before = cloneLayersDeep(s.layers);
+        setState(prev => ({
+          ...prev,
+          layers: mapLayersUpdateShapeById(prev.layers, sid, { ...target, rotation: rad }),
+        }));
+        handleLayersMutation(before, s.activeLayerId, '도형 회전');
+      }
+    },
+    [handleLayersMutation],
+  );
+
+  const selectionRotationDeg = useMemo(() => {
+    if (state.selectedRasterLayerId) {
+      const lyr = state.layers.find(l => l.id === state.selectedRasterLayerId);
+      if (!lyr?.image) return null;
+      return ((lyr.imageRotation ?? 0) * 180) / Math.PI;
+    }
+    if (state.selectedShapeIds.length === 1) {
+      const sh = findShapeInLayers(state.layers, state.selectedShapeIds[0]);
+      if (!sh) return null;
+      return ((sh.rotation ?? 0) * 180) / Math.PI;
+    }
+    return null;
+  }, [state.selectedRasterLayerId, state.selectedShapeIds, state.layers]);
+
   const handleDeleteLastShape = useCallback(() => {
     const undoPoint = buildStateSnapshot(stateRef.current);
     const prevStack = undoStackRef.current;
@@ -650,18 +740,22 @@ export default function App() {
   const handleResize = (newWidth: number, newHeight: number) => {
     if (!documentHasRaster(state.layers)) return;
 
-    const rescaleLayerImage = (layer: EditorLayer): Promise<EditorLayer> => {
-      if (!layer.image) return Promise.resolve(layer);
+    const rescaleLayerImage = async (layer: EditorLayer): Promise<EditorLayer> => {
+      if (!layer.image) return layer;
+      const baked = await bakeRasterLayerVisualToAxisAligned(layer);
+      const L = baked
+        ? { ...layer, image: baked.image, imageX: baked.imageX, imageY: baked.imageY, imageRotation: undefined }
+        : layer;
       const c = document.createElement('canvas');
       c.width = newWidth;
       c.height = newHeight;
       const x = c.getContext('2d');
-      if (!x) return Promise.resolve(layer);
-      x.drawImage(layer.image, 0, 0, newWidth, newHeight);
+      if (!x) return L;
+      x.drawImage(L.image!, 0, 0, newWidth, newHeight);
       return new Promise(resolve => {
         const img = new Image();
-        img.onload = () => resolve({ ...layer, image: img, imageX: 0, imageY: 0 });
-        img.onerror = () => resolve(layer);
+        img.onload = () => resolve({ ...L, image: img, imageX: 0, imageY: 0, imageRotation: undefined });
+        img.onerror = () => resolve(L);
         img.src = c.toDataURL();
       });
     };
@@ -713,37 +807,42 @@ export default function App() {
       return base;
     };
 
-    const rescaleLayerImage = (layer: EditorLayer): Promise<EditorLayer> => {
+    const rescaleLayerImage = async (layer: EditorLayer): Promise<EditorLayer> => {
       if (!layer.image) {
-        return Promise.resolve({
+        return {
           ...layer,
           shapes: layer.shapes.map(scaleShape),
           imageX: Math.round((layer.imageX ?? 0) * scaleX),
           imageY: Math.round((layer.imageY ?? 0) * scaleY),
-        });
+        };
       }
+      const baked = await bakeRasterLayerVisualToAxisAligned(layer);
+      const L = baked
+        ? { ...layer, image: baked.image, imageX: baked.imageX, imageY: baked.imageY, imageRotation: undefined }
+        : layer;
       const c = document.createElement('canvas');
       c.width = newWidth;
       c.height = newHeight;
       const x = c.getContext('2d');
-      if (!x) return Promise.resolve(layer);
-      x.drawImage(layer.image, 0, 0, newWidth, newHeight);
+      if (!x) return L;
+      x.drawImage(L.image!, 0, 0, newWidth, newHeight);
       return new Promise(resolve => {
         const img = new Image();
         img.onload = () =>
           resolve({
-            ...layer,
+            ...L,
             image: img,
-            shapes: layer.shapes.map(scaleShape),
-            imageX: Math.round((layer.imageX ?? 0) * scaleX),
-            imageY: Math.round((layer.imageY ?? 0) * scaleY),
+            shapes: L.shapes.map(scaleShape),
+            imageX: Math.round((L.imageX ?? 0) * scaleX),
+            imageY: Math.round((L.imageY ?? 0) * scaleY),
+            imageRotation: undefined,
           });
         img.onerror = () =>
           resolve({
-            ...layer,
-            shapes: layer.shapes.map(scaleShape),
-            imageX: Math.round((layer.imageX ?? 0) * scaleX),
-            imageY: Math.round((layer.imageY ?? 0) * scaleY),
+            ...L,
+            shapes: L.shapes.map(scaleShape),
+            imageX: Math.round((L.imageX ?? 0) * scaleX),
+            imageY: Math.round((L.imageY ?? 0) * scaleY),
           });
         img.src = c.toDataURL();
       });
@@ -805,13 +904,15 @@ export default function App() {
     if (state.selectedRasterLayerId) {
       const layer = state.layers.find(l => l.id === state.selectedRasterLayerId);
       if (!layer?.image) return;
-      const cloned = await cloneImageElement(layer.image);
+      const baked = await bakeRasterLayerVisualToAxisAligned(layer);
+      const src = baked ? baked.image : layer.image;
+      const cloned = await cloneImageElement(src);
       if (!cloned) return;
       internalClipboardRef.current = {
         kind: 'raster',
         image: cloned,
-        x: layer.imageX ?? 0,
-        y: layer.imageY ?? 0,
+        x: baked ? baked.imageX : layer.imageX ?? 0,
+        y: baked ? baked.imageY : layer.imageY ?? 0,
         fileName: layer.fileName,
       };
       const c = document.createElement('canvas');
@@ -897,9 +998,7 @@ export default function App() {
       if (!ctx) return;
 
       if (activeLayer?.image) {
-        const ox = activeLayer.imageX ?? 0;
-        const oy = activeLayer.imageY ?? 0;
-        ctx.drawImage(activeLayer.image, ox, oy);
+        drawRasterImageOnContext(ctx, activeLayer);
       }
       ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
 
@@ -984,10 +1083,13 @@ export default function App() {
       canvas.height = Math.max(1, Math.ceil(bottom - top));
       const ctx = canvas.getContext('2d');
       if (!ctx) return false;
+      ctx.save();
+      ctx.translate(-left, -top);
       if (activeLayer.image) {
-        ctx.drawImage(activeLayer.image, ax - left, ay - top);
+        drawRasterImageOnContext(ctx, activeLayer);
       }
-      ctx.drawImage(cloned, nx - left, ny - top);
+      ctx.drawImage(cloned, nx, ny);
+      ctx.restore();
       const merged = new Image();
       merged.onload = () => {
         setState(prev => ({
@@ -1001,6 +1103,7 @@ export default function App() {
                   fileName: activeLayer.fileName ?? payload.fileName ?? 'pasted-image.png',
                   imageX: left,
                   imageY: top,
+                  imageRotation: undefined,
                 }
               : l
           ),
@@ -1075,21 +1178,18 @@ export default function App() {
       if (!ctx) return;
 
       /** 활성 레이어 래스터만 깔고 그 위에 붙여넣기(다른 레이어 래스터는 합성하지 않음). */
+      ctx.save();
+      ctx.translate(-left, -top);
       if (activeLayer.image) {
-        ctx.drawImage(activeLayer.image, ax - left, ay - top);
+        drawRasterImageOnContext(ctx, activeLayer);
       }
 
       if (s.selection) {
-        ctx.drawImage(
-          img,
-          pasteX - left,
-          pasteY - top,
-          pasteW,
-          pasteH
-        );
+        ctx.drawImage(img, pasteX, pasteY, pasteW, pasteH);
       } else {
-        ctx.drawImage(img, pasteX - left, pasteY - top);
+        ctx.drawImage(img, pasteX, pasteY);
       }
+      ctx.restore();
 
       let mergedDataUrl: string;
       try {
@@ -1113,6 +1213,7 @@ export default function App() {
                   fileName: activeLayer.fileName ?? 'pasted-image.png',
                   imageX: left,
                   imageY: top,
+                  imageRotation: undefined,
                 }
               : l
           ),
@@ -1302,6 +1403,8 @@ export default function App() {
         onTransformScaleUp={handleTransformScaleUp}
         onTransformRotateLeft={handleTransformRotateLeft}
         onTransformRotateRight={handleTransformRotateRight}
+        selectionRotationDeg={selectionRotationDeg}
+        onSelectionRotationDegCommit={handleSelectionRotationDegCommit}
         onClearShapes={handleClearShapes}
         onCopy={handleCopy}
         onCut={handleCut}

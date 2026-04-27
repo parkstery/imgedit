@@ -149,13 +149,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     centerX: number;
     centerY: number;
     startAngle: number;
-    sourceImage: HTMLImageElement;
-    srcW: number;
-    srcH: number;
+    startBaseRotation: number;
     snapshotBefore: EditorLayer[];
     hasMoved: boolean;
   } | null>(null);
-  const rasterRotateGenRef = useRef(0);
   const areaCaptureDragRef = useRef<{ start: Point } | null>(null);
   const lastImgPosRef = useRef<Point>({ x: 0, y: 0 });
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
@@ -194,6 +191,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       y2: iy + h,
       color: '#000000',
       lineWidth: 1,
+      rotation: lyr.imageRotation ?? 0,
     };
   }, []);
 
@@ -1024,9 +1022,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   centerX,
                   centerY,
                   startAngle,
-                  sourceImage: lyr.image,
-                  srcW: lyr.image.width,
-                  srcH: lyr.image.height,
+                  startBaseRotation: lyr.imageRotation ?? 0,
                   snapshotBefore: cloneLayersDeep(state.layers),
                   hasMoved: false,
                 };
@@ -1191,57 +1187,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (rasterRotateStateRef.current) {
       const st = rasterRotateStateRef.current;
       const current = toImageCoords(pos);
-      let rotateRad =
-        Math.atan2(current.y - st.centerY, current.x - st.centerX) - st.startAngle;
+      const curAngle = Math.atan2(current.y - st.centerY, current.x - st.centerX);
+      let newRotation = st.startBaseRotation + (curAngle - st.startAngle);
       if (e.shiftKey) {
         const step = Math.PI / 12;
-        rotateRad = Math.round(rotateRad / step) * step;
+        newRotation = Math.round(newRotation / step) * step;
       }
       st.hasMoved = true;
-      const scaledW = st.srcW;
-      const scaledH = st.srcH;
-      const absCos = Math.abs(Math.cos(rotateRad));
-      const absSin = Math.abs(Math.sin(rotateRad));
-      const outW = Math.max(1, Math.ceil(scaledW * absCos + scaledH * absSin));
-      const outH = Math.max(1, Math.ceil(scaledW * absSin + scaledH * absCos));
-      const gen = ++rasterRotateGenRef.current;
-      const c = document.createElement('canvas');
-      c.width = outW;
-      c.height = outH;
-      const ctx = c.getContext('2d');
-      if (!ctx) return;
-      ctx.translate(outW / 2, outH / 2);
-      ctx.rotate(rotateRad);
-      try {
-        ctx.drawImage(st.sourceImage, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
-      } catch {
-        return;
-      }
-      let url: string;
-      try {
-        url = c.toDataURL();
-      } catch {
-        return;
-      }
-      const out = new Image();
-      out.onload = () => {
-        if (gen !== rasterRotateGenRef.current) return;
-        setState(prev => ({
-          ...prev,
-          layers: prev.layers.map(l =>
-            l.id === st.layerId
-              ? {
-                  ...l,
-                  image: out,
-                  imageX: st.centerX - outW / 2,
-                  imageY: st.centerY - outH / 2,
-                }
-              : l
-          ),
-        }));
-      };
-      out.onerror = () => {};
-      out.src = url;
+      setState(prev => ({
+        ...prev,
+        layers: prev.layers.map(l =>
+          l.id === st.layerId ? { ...l, imageRotation: newRotation } : l
+        ),
+      }));
       return;
     }
 
@@ -1257,6 +1215,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       if (!b || b.width < 1 || b.height < 1) return;
       const cw = Math.max(1, Math.round(b.width));
       const ch = Math.max(1, Math.round(b.height));
+      const nextImageRotation = updated.rotation ?? 0;
       const gen = ++rasterResizeGenRef.current;
       const srcImg = new Image();
       srcImg.onload = () => {
@@ -1283,7 +1242,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           setState(prev => ({
             ...prev,
             layers: prev.layers.map(l =>
-              l.id === st.layerId ? { ...l, image: out, imageX: b.x, imageY: b.y } : l
+              l.id === st.layerId
+                ? { ...l, image: out, imageX: b.x, imageY: b.y, imageRotation: nextImageRotation }
+                : l
             ),
           }));
         };
@@ -1481,7 +1442,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (rasterRotateStateRef.current) {
       const st = rasterRotateStateRef.current;
       rasterRotateStateRef.current = null;
-      rasterRotateGenRef.current += 1;
       if (st.hasMoved) {
         onLayersMutation?.(st.snapshotBefore, st.layerId, '이미지 회전');
       }

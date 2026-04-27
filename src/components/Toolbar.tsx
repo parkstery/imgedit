@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   FolderOpen,
   FilePlus,
@@ -131,6 +131,9 @@ interface ToolbarProps {
   onTransformScaleUp: () => void;
   onTransformRotateLeft: () => void;
   onTransformRotateRight: () => void;
+  /** 단일 도형 또는 래스터 선택 시 도 단위(절대 각). 없으면 입력란 숨김 */
+  selectionRotationDeg: number | null;
+  onSelectionRotationDegCommit: (deg: number) => void;
   onClearShapes: () => void;
   onCopy: () => void;
   onCut: () => void;
@@ -171,6 +174,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onTransformScaleUp,
   onTransformRotateLeft,
   onTransformRotateRight,
+  selectionRotationDeg,
+  onSelectionRotationDegCommit,
   onClearShapes,
   onCopy,
   onCut,
@@ -182,6 +187,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 }) => {
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
   const advancedColorAnchorRef = useRef<HTMLButtonElement>(null);
+  const [rotationDraft, setRotationDraft] = useState('');
+
+  useEffect(() => {
+    if (selectionRotationDeg == null) {
+      setRotationDraft('');
+      return;
+    }
+    const rounded = Math.round(selectionRotationDeg * 1000) / 1000;
+    setRotationDraft(String(rounded));
+  }, [selectionRotationDeg]);
+
+  const commitRotationDraft = () => {
+    if (selectionRotationDeg == null) return;
+    const v = parseFloat(rotationDraft.replace(/,/g, '.'));
+    if (Number.isFinite(v)) {
+      onSelectionRotationDegCommit(v);
+    } else {
+      setRotationDraft(String(Math.round(selectionRotationDeg * 1000) / 1000));
+    }
+  };
 
   return (
     <div className="min-h-14 bg-neutral-800 border-b border-neutral-700 flex flex-col gap-y-1 py-1.5 px-2 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30 lg:flex-row lg:items-center lg:gap-y-0 lg:py-0 lg:min-h-14">
@@ -404,6 +429,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             label="선택 회전 (+15°)"
             disabled={!canTransformSelection}
           />
+          {selectionRotationDeg != null && (
+            <div
+              className="flex items-center gap-1 ml-0.5 px-1.5 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
+              title="절대 각도(도). Enter 또는 포커스 해제로 적용"
+            >
+              <span className="text-[10px] text-neutral-400 whitespace-nowrap">각도 °</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={rotationDraft}
+                onChange={(e) => setRotationDraft(e.target.value)}
+                onBlur={() => commitRotationDraft()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitRotationDraft();
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-xs text-center tabular-nums focus:outline-none focus:border-blue-500"
+                aria-label="선택 개체 회전 각도(도)"
+              />
+            </div>
+          )}
         </div>
       </div>
 

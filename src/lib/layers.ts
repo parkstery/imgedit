@@ -1,6 +1,69 @@
-import type { EditorLayer, Point, Shape } from '../types';
+import type { EditorLayer, Point, Rect, Shape } from '../types';
 import { pickTopShape } from './shapeGeometry';
 import { renderShapesOnContext } from './drawShapes';
+
+/** 래스터(비트맵 + imageX/Y + imageRotation)의 문서 좌표계에서의 축정렬 바운딩 박스 */
+export function getRasterDocWorldAabb(layer: EditorLayer): Rect | null {
+  const img = layer.image;
+  if (!img) return null;
+  const ix = layer.imageX ?? 0;
+  const iy = layer.imageY ?? 0;
+  const w = img.width;
+  const h = img.height;
+  const r = layer.imageRotation ?? 0;
+  if (!r || Math.abs(r) < 1e-9) {
+    return { x: ix, y: iy, width: w, height: h };
+  }
+  const cx = ix + w / 2;
+  const cy = iy + h / 2;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  const corners = [
+    { x: -w / 2, y: -h / 2 },
+    { x: w / 2, y: -h / 2 },
+    { x: w / 2, y: h / 2 },
+    { x: -w / 2, y: h / 2 },
+  ];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of corners) {
+    const rx = p.x * cos - p.y * sin + cx;
+    const ry = p.x * sin + p.y * cos + cy;
+    minX = Math.min(minX, rx);
+    maxX = Math.max(maxX, rx);
+    minY = Math.min(minY, ry);
+    maxY = Math.max(maxY, ry);
+  }
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
+
+export function drawRasterImageOnContext(ctx: CanvasRenderingContext2D, layer: EditorLayer): void {
+  const img = layer.image;
+  if (!img) return;
+  const ix = layer.imageX ?? 0;
+  const iy = layer.imageY ?? 0;
+  const w = img.width;
+  const h = img.height;
+  const r = layer.imageRotation ?? 0;
+  if (!r || Math.abs(r) < 1e-9) {
+    ctx.drawImage(img, ix, iy);
+    return;
+  }
+  const cx = ix + w / 2;
+  const cy = iy + h / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(r);
+  ctx.drawImage(img, -w / 2, -h / 2);
+  ctx.restore();
+}
 
 export function newLayerId(): string {
   return Math.random().toString(36).slice(2, 11);
@@ -41,10 +104,11 @@ export function getDocumentCanvasSize(layers: readonly EditorLayer[]): { width: 
   let maxB = 0;
   for (const layer of layers) {
     if (layer.image) {
-      const ix = layer.imageX ?? 0;
-      const iy = layer.imageY ?? 0;
-      maxR = Math.max(maxR, ix + layer.image.width);
-      maxB = Math.max(maxB, iy + layer.image.height);
+      const box = getRasterDocWorldAabb(layer);
+      if (box) {
+        maxR = Math.max(maxR, box.x + box.width);
+        maxB = Math.max(maxB, box.y + box.height);
+      }
     }
   }
   if (maxR <= 0 || maxB <= 0) return { width: DEFAULT_DOC_WIDTH, height: DEFAULT_DOC_HEIGHT };
@@ -69,7 +133,7 @@ export function drawLayerStackToContext(
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.image) {
-      ctx.drawImage(layer.image, layer.imageX ?? 0, layer.imageY ?? 0);
+      drawRasterImageOnContext(ctx, layer);
     }
     renderShapesOnContext(ctx, layer.shapes);
   }
@@ -86,7 +150,7 @@ export function drawVisibleLayerRastersToContext(
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (layer.image) {
-      ctx.drawImage(layer.image, layer.imageX ?? 0, layer.imageY ?? 0);
+      drawRasterImageOnContext(ctx, layer);
     }
   }
 }
@@ -156,8 +220,9 @@ export function mapLayersFlattenRasterToActive(
           shapes: [],
           imageX: 0,
           imageY: 0,
+          imageRotation: undefined,
         }
-      : { ...l, image: null, fileName: null, shapes: [], imageX: 0, imageY: 0 }
+      : { ...l, image: null, fileName: null, shapes: [], imageX: 0, imageY: 0, imageRotation: undefined }
   );
 }
 
@@ -170,7 +235,7 @@ export function mapLayersReplaceActiveLayerRaster(
 ): EditorLayer[] {
   return layers.map(l =>
     l.id === activeLayerId
-      ? { ...l, image, fileName: fileName ?? l.fileName, imageX: 0, imageY: 0 }
+      ? { ...l, image, fileName: fileName ?? l.fileName, imageX: 0, imageY: 0, imageRotation: undefined }
       : l
   );
 }
@@ -225,7 +290,20 @@ export function pickTopInteractiveTarget(
       const iy = layer.imageY ?? 0;
       const w = layer.image.width;
       const h = layer.image.height;
-      if (p.x >= ix && p.y >= iy && p.x < ix + w && p.y < iy + h) {
+      const r = layer.imageRotation ?? 0;
+      const cx = ix + w / 2;
+      const cy = iy + h / 2;
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      let lx = dx;
+      let ly = dy;
+      if (r) {
+        const cos = Math.cos(-r);
+        const sin = Math.sin(-r);
+        lx = dx * cos - dy * sin;
+        ly = dx * sin + dy * cos;
+      }
+      if (lx >= -w / 2 && lx <= w / 2 && ly >= -h / 2 && ly <= h / 2) {
         return { kind: 'raster', layerId: layer.id };
       }
     }
@@ -253,4 +331,40 @@ export function mapLayersUpdateShapeById(
     ...layer,
     shapes: layer.shapes.map(sh => (sh.id === shapeId ? nextShape : sh)),
   }));
+}
+
+/** 현재 시각(회전 포함)을 비트맵에 굽고 imageRotation 은 제거합니다. toDataURL 불가 시 null. */
+export function bakeRasterLayerVisualToAxisAligned(layer: EditorLayer): Promise<{
+  image: HTMLImageElement;
+  imageX: number;
+  imageY: number;
+} | null> {
+  if (!layer.image) return Promise.resolve(null);
+  const r = layer.imageRotation ?? 0;
+  const ix = layer.imageX ?? 0;
+  const iy = layer.imageY ?? 0;
+  if (!r || Math.abs(r) < 1e-9) {
+    return Promise.resolve({ image: layer.image, imageX: ix, imageY: iy });
+  }
+  const box = getRasterDocWorldAabb(layer);
+  if (!box) return Promise.resolve(null);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.ceil(box.width));
+  c.height = Math.max(1, Math.ceil(box.height));
+  const ctx = c.getContext('2d');
+  if (!ctx) return Promise.resolve(null);
+  ctx.setTransform(1, 0, 0, 1, -box.x, -box.y);
+  drawRasterImageOnContext(ctx, layer);
+  let dataUrl: string;
+  try {
+    dataUrl = c.toDataURL();
+  } catch {
+    return Promise.resolve(null);
+  }
+  return new Promise(resolve => {
+    const out = new Image();
+    out.onload = () => resolve({ image: out, imageX: box.x, imageY: box.y });
+    out.onerror = () => resolve(null);
+    out.src = dataUrl;
+  });
 }

@@ -59,6 +59,8 @@ export interface EditorLayer {
   /** 래스터 왼쪽 위를 문서 좌표 (0,0) 기준으로 배치 */
   imageX: number;
   imageY: number;
+  /** 래스터 회전(라디안). 비트맵 중심(imageX+W/2, imageY+H/2) 기준. 없으면 0. */
+  imageRotation?: number;
   shapes: Shape[];
 }
 
