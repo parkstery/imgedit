@@ -1,6 +1,6 @@
 import type { Point, Rect, Shape } from '../types';
 
-/** 캔버스 ctx.arc에 넘길 반원(현의 지름 = x1,y1 ~ x2,y2) 파라미터 */
+/** 캔버스 ctx.arc에 넘길 원호 파라미터 */
 export type ArcStrokeParams = {
   cx: number;
   cy: number;
@@ -27,9 +27,72 @@ function angleDeltaToward(start: number, end: number, counterclockwise: boolean)
   return d;
 }
 
-/** chord의 왼쪽(시작→끝 벡터 기준 반시계 90°)에 불룩한 반원. arcFlip이면 반대편 반원 */
-export function getArcStrokeParams(shape: Shape): ArcStrokeParams | null {
-  if (shape.type !== 'arc') return null;
+/** 세 점을 지나는 원 (일직선이면 null) */
+export function circumcircleThroughThreePoints(a: Point, b: Point, c: Point): { cx: number; cy: number; r: number } | null {
+  const ax = a.x;
+  const ay = a.y;
+  const bx = b.x;
+  const by = b.y;
+  const cx = c.x;
+  const cy = c.y;
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  if (Math.abs(d) < 1e-9) return null;
+  const a2 = ax * ax + ay * ay;
+  const b2 = bx * bx + by * by;
+  const c2 = cx * cx + cy * cy;
+  const ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d;
+  const uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+  const r = Math.hypot(ax - ux, ay - uy);
+  if (r < 1e-6) return null;
+  return { cx: ux, cy: uy, r };
+}
+
+/** 시작→끝 호가 중간점을 지나도록 하는 방향 */
+function pickArcDirection(
+  as: number,
+  ae: number,
+  ai: number,
+): { counterclockwise: boolean } | null {
+  const ccwSI = angleDeltaToward(as, ai, true);
+  const ccwIE = angleDeltaToward(ai, ae, true);
+  const ccwSE = angleDeltaToward(as, ae, true);
+  const ccwOk = Math.abs(ccwSI + ccwIE - ccwSE) < 0.03;
+
+  const cwSI = angleDeltaToward(as, ai, false);
+  const cwIE = angleDeltaToward(ai, ae, false);
+  const cwSE = angleDeltaToward(as, ae, false);
+  const cwOk = Math.abs(cwSI + cwIE - cwSE) < 0.03;
+
+  if (ccwOk && !cwOk) return { counterclockwise: true };
+  if (!ccwOk && cwOk) return { counterclockwise: false };
+  if (ccwOk && cwOk) {
+    return Math.abs(ccwSE) <= Math.abs(cwSE) ? { counterclockwise: true } : { counterclockwise: false };
+  }
+  return null;
+}
+
+/** 세 점: points[0]=시작, points[1]=끝, points[2]=호 위의 중간점 */
+export function getArcStrokeParamsFromThreePoints(start: Point, end: Point, mid: Point): ArcStrokeParams | null {
+  const o = circumcircleThroughThreePoints(start, end, mid);
+  if (!o) return null;
+  const { cx, cy, r } = o;
+  const as = Math.atan2(start.y - cy, start.x - cx);
+  const ae = Math.atan2(end.y - cy, end.x - cx);
+  const ai = Math.atan2(mid.y - cy, mid.x - cx);
+  const dir = pickArcDirection(as, ae, ai);
+  if (!dir) return null;
+  return {
+    cx,
+    cy,
+    r,
+    startAngle: as,
+    endAngle: ae,
+    counterclockwise: dir.counterclockwise,
+  };
+}
+
+/** 이전 저장분: points 없이 x1,y1–x2,y2 지름 반원 + arcFlip */
+function getArcStrokeParamsLegacyChord(shape: Shape): ArcStrokeParams | null {
   const { x1, y1, x2, y2, arcFlip } = shape;
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -45,20 +108,20 @@ export function getArcStrokeParams(shape: Shape): ArcStrokeParams | null {
   const a1 = Math.atan2(y1 - cy, x1 - cx);
   const a2 = Math.atan2(y2 - cy, x2 - cx);
   const apexAng = Math.atan2(apexY - cy, apexX - cx);
-
   const midCCW = normAngle(a1 + Math.PI / 2);
   const midCW = normAngle(a1 - Math.PI / 2);
   const dist = (u: number, v: number) => Math.abs(normAngle(u - v));
   const counterclockwise = dist(midCCW, apexAng) <= dist(midCW, apexAng);
+  return { cx, cy, r, startAngle: a1, endAngle: a2, counterclockwise };
+}
 
-  return {
-    cx,
-    cy,
-    r,
-    startAngle: a1,
-    endAngle: a2,
-    counterclockwise,
-  };
+export function getArcStrokeParams(shape: Shape): ArcStrokeParams | null {
+  if (shape.type !== 'arc') return null;
+  const pts = shape.points;
+  if (pts && pts.length >= 3) {
+    return getArcStrokeParamsFromThreePoints(pts[0], pts[1], pts[2]);
+  }
+  return getArcStrokeParamsLegacyChord(shape);
 }
 
 function arcPointAt(
@@ -75,12 +138,34 @@ function arcPointAt(
   return { x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) };
 }
 
+function rectFromPoints(pts: readonly Point[]): Rect {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of pts) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
+  };
+}
+
 export function getArcShapeBounds(shape: Shape): Rect | null {
   if (shape.type !== 'arc') return null;
   const p = getArcStrokeParams(shape);
-  if (!p) return null;
+  if (!p) {
+    if (shape.points && shape.points.length >= 3) return rectFromPoints(shape.points.slice(0, 3));
+    return null;
+  }
   const { cx, cy, r, startAngle, endAngle, counterclockwise } = p;
-  const n = 32;
+  const n = 40;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -102,7 +187,7 @@ export function getArcShapeBounds(shape: Shape): Rect | null {
 
 export function pointToArcStrokeDistance(q: Point, p: ArcStrokeParams): number {
   const { cx, cy, r, startAngle, endAngle, counterclockwise } = p;
-  const samples = 48;
+  const samples = 56;
   let best = Infinity;
   for (let i = 0; i <= samples; i++) {
     const pt = arcPointAt(cx, cy, r, startAngle, endAngle, counterclockwise, i / samples);

@@ -28,7 +28,7 @@ export type Tool =
   | 'polyline'
   | 'rect'
   | 'ellipse'
-  /** 현: 지름을 두 끝점으로 하는 반원(Alt 누르면 반대편 반원) */
+  /** 원호: 세 점(시작, 끝, 호 위 중간) */
   | 'arc'
   | 'fill'
   | 'text';
@@ -84,14 +84,14 @@ export interface Shape {
   y2: number;
   color: string;
   lineWidth: number;
-  /** type이 polyline일 때 꼭짓점 (이미지 좌표) */
+  /** polyline: 꼭짓점 / arc: [시작, 끝, 중간(호 위)] 세 점 */
   points?: Point[];
   /** type이 text일 때 (x1,y1) 왼쪽 베이스라인, fillText 기준 */
   text?: string;
   fontSize?: number;
   /** 회전 각(라디안). 기본 0. 회전 앵커는 항상 stored AABB의 중심. */
   rotation?: number;
-  /** type이 arc일 때 true면 반원을 chord 반대편에 그림(드래그 중 Alt) */
+  /** type이 arc이고 구식 2점만 있을 때: 지름 반원의 반대편 */
   arcFlip?: boolean;
 }
 

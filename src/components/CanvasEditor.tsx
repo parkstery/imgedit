@@ -20,7 +20,7 @@ import {
   type ResizeHandleId,
   type PickedHandle,
 } from '../lib/shapeGeometry';
-import { getArcStrokeParams } from '../lib/arcGeometry';
+import { getArcStrokeParamsFromThreePoints } from '../lib/arcGeometry';
 import {
   cloneLayersDeep,
   documentHasRaster,
@@ -163,6 +163,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   /** 원형 영역: 1·2클릭이 지름의 양끝(임의 방향), 거리=지름 */
   const marqueeCircleAnchorRef = useRef<Point | null>(null);
   const marqueeCirclePreviewRef = useRef<Point | null>(null);
+  /** 아크: 클릭 순서 [시작, 끝], 셋째 클릭으로 중간점 확정 */
+  const arcDraftRef = useRef<Point[]>([]);
+  const arcHoverRef = useRef<Point | null>(null);
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
 
   /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
@@ -271,6 +274,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       marqueeCircleAnchorRef.current = null;
       marqueeCirclePreviewRef.current = null;
     }
+    if (state.tool !== 'arc') {
+      arcDraftRef.current = [];
+      arcHoverRef.current = null;
+    }
   }, [state.tool]);
 
   useEffect(() => {
@@ -331,6 +338,14 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         if (e.key === 'Escape') {
           e.preventDefault();
           setState(prev => ({ ...prev, freehandDraft: null }));
+        }
+      }
+      if (state.tool === 'arc' && arcDraftRef.current.length > 0) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          arcDraftRef.current = [];
+          arcHoverRef.current = null;
+          drawRef.current();
         }
       }
 
@@ -507,11 +522,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           const cx = (state.activeShape.x1 + state.activeShape.x2) / 2;
           const cy = (state.activeShape.y1 + state.activeShape.y2) / 2;
           ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        } else if (state.activeShape.type === 'arc') {
-          const ap = getArcStrokeParams(state.activeShape);
-          if (ap) {
-            ctx.arc(ap.cx, ap.cy, ap.r, ap.startAngle, ap.endAngle, ap.counterclockwise);
-          }
         }
         ctx.stroke();
     }
@@ -745,6 +755,42 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
         ctx.strokeRect(ix, iy, rl.image.width, rl.image.height);
         ctx.setLineDash([]);
+      }
+    }
+
+    if (state.tool === 'arc' && arcDraftRef.current.length > 0) {
+      const draft = arcDraftRef.current;
+      const hover = arcHoverRef.current;
+      ctx.strokeStyle = state.color;
+      ctx.lineWidth = Math.max(1, state.lineWidth) / state.zoom;
+      ctx.setLineDash([5 / state.zoom, 4 / state.zoom]);
+      ctx.beginPath();
+      ctx.moveTo(draft[0].x, draft[0].y);
+      if (draft.length >= 2) {
+        ctx.lineTo(draft[1].x, draft[1].y);
+      }
+      ctx.stroke();
+      if (draft.length >= 2 && hover) {
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(draft[1].x, draft[1].y);
+        ctx.lineTo(hover.x, hover.y);
+        ctx.stroke();
+        const ap = getArcStrokeParamsFromThreePoints(draft[0], draft[1], hover);
+        if (ap) {
+          ctx.beginPath();
+          ctx.arc(ap.cx, ap.cy, ap.r, ap.startAngle, ap.endAngle, ap.counterclockwise);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+      ctx.setLineDash([]);
+      const mr = 3.5 / state.zoom;
+      ctx.fillStyle = state.color;
+      for (const p of draft) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, mr, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
@@ -1218,6 +1264,69 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           }
           drawRef.current();
         }
+      } else if (state.tool === 'arc' && documentHasRaster(state.layers)) {
+        const al = getActiveLayer(state.layers, state.activeLayerId);
+        if (al?.locked) return;
+        const imgPos = toImageCoords(pos);
+        const draft = arcDraftRef.current;
+        if (draft.length === 0) {
+          draft.push(imgPos);
+          arcHoverRef.current = imgPos;
+          drawRef.current();
+        } else if (draft.length === 1) {
+          if (Math.hypot(imgPos.x - draft[0].x, imgPos.y - draft[0].y) < 2) return;
+          draft.push(imgPos);
+          arcHoverRef.current = imgPos;
+          drawRef.current();
+        } else {
+          const start = draft[0];
+          const end = draft[1];
+          const mid = imgPos;
+          if (
+            Math.hypot(mid.x - start.x, mid.y - start.y) < 2 ||
+            Math.hypot(mid.x - end.x, mid.y - end.y) < 2
+          ) {
+            return;
+          }
+          const ap = getArcStrokeParamsFromThreePoints(start, end, mid);
+          if (!ap) {
+            drawRef.current();
+            return;
+          }
+          const shape: Shape = {
+            id: Math.random().toString(36).slice(2, 11),
+            type: 'arc',
+            x1: start.x,
+            y1: start.y,
+            x2: end.x,
+            y2: end.y,
+            points: [
+              { x: start.x, y: start.y },
+              { x: end.x, y: end.y },
+              { x: mid.x, y: mid.y },
+            ],
+            color: state.color,
+            lineWidth: state.lineWidth,
+          };
+          arcDraftRef.current = [];
+          arcHoverRef.current = null;
+          setState(prev => {
+            const al2 = getActiveLayer(prev.layers, prev.activeLayerId);
+            const targetLayer =
+              al2 && !al2.locked ? al2 : prev.layers.find(l => !l.locked) ?? null;
+            if (!targetLayer) return prev;
+            return {
+              ...prev,
+              activeLayerId: targetLayer.id,
+              layers: mapLayersReplaceActiveShapes(prev.layers, targetLayer.id, [
+                ...targetLayer.shapes,
+                shape,
+              ]),
+            };
+          });
+          onShapeCommitted?.(getShapeCommitLabel('arc'));
+          drawRef.current();
+        }
       } else if (state.tool === 'text' && documentHasRaster(state.layers)) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (al?.locked) return;
@@ -1240,7 +1349,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'text' &&
         state.tool !== 'select' &&
         state.tool !== 'marquee' &&
-        state.tool !== 'marqueeCircle'
+        state.tool !== 'marqueeCircle' &&
+        state.tool !== 'arc'
       ) {
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (al?.locked) return;
@@ -1249,7 +1359,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ...prev,
           activeShape: {
             id: Math.random().toString(36).substr(2, 9),
-            type: state.tool as 'line' | 'rect' | 'ellipse' | 'arc',
+            type: state.tool as 'line' | 'rect' | 'ellipse',
             x1: imgPos.x,
             y1: imgPos.y,
             x2: imgPos.x,
@@ -1270,6 +1380,13 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (state.tool === 'marqueeCircle' && marqueeCircleAnchorRef.current) {
       marqueeCirclePreviewRef.current = { x: imgPos.x, y: imgPos.y };
       drawRef.current();
+    }
+
+    if (state.tool === 'arc' && arcDraftRef.current.length === 2) {
+      arcHoverRef.current = { x: imgPos.x, y: imgPos.y };
+      drawRef.current();
+    } else if (state.tool === 'arc' && arcDraftRef.current.length < 2) {
+      arcHoverRef.current = null;
     }
 
     if (areaCaptureDragRef.current && areaCaptureArmed) {
@@ -1525,7 +1642,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               ...prev.activeShape,
               x2: current.x,
               y2: current.y,
-              ...(prev.activeShape.type === 'arc' ? { arcFlip: e.altKey } : {}),
             }
           : null,
       }));
@@ -1614,10 +1730,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         setDragStart(null);
         return;
       }
-      const placed = state.activeShape;
-      const commitShape =
-        placed.type !== 'arc' ||
-        Math.hypot(placed.x2 - placed.x1, placed.y2 - placed.y1) >= 2;
       shapeEndGuardRef.current = true;
       setState(prev => {
         const cur = prev.activeShape;
@@ -1628,12 +1740,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ? al
             : prev.layers.find(l => !l.locked) ?? null;
         if (!targetLayer) return { ...prev, activeShape: null };
-        if (
-          cur.type === 'arc' &&
-          Math.hypot(cur.x2 - cur.x1, cur.y2 - cur.y1) < 2
-        ) {
-          return { ...prev, activeShape: null };
-        }
         return {
           ...prev,
           activeLayerId: targetLayer.id,
@@ -1644,9 +1750,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           activeShape: null,
         };
       });
-      if (commitShape) {
-        onShapeCommitted?.(getShapeCommitLabel(state.tool));
-      }
+      onShapeCommitted?.(getShapeCommitLabel(state.tool));
       queueMicrotask(() => {
         shapeEndGuardRef.current = false;
       });
@@ -1712,6 +1816,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     if (state.tool === 'marqueeCircle' && marqueeCircleAnchorRef.current) {
       marqueeCircleAnchorRef.current = null;
       marqueeCirclePreviewRef.current = null;
+      drawRef.current();
+    }
+    if (state.tool === 'arc' && arcDraftRef.current.length > 0) {
+      arcDraftRef.current = [];
+      arcHoverRef.current = null;
       drawRef.current();
     }
     if (state.tool === 'polyline' && state.polylineDraft && state.polylineDraft.points.length >= 2) {

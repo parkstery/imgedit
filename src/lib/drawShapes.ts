@@ -1,5 +1,5 @@
 import type { Point, Shape, Rect } from '../types';
-import { getArcStrokeParams } from './arcGeometry';
+import { circumcircleThroughThreePoints, getArcStrokeParams } from './arcGeometry';
 
 /** 한글·라틴 모두 쓰기 좋은 시스템 폰트 스택 */
 export const CANVAS_TEXT_FONT_STACK =
@@ -15,6 +15,10 @@ export function getShapeRotationCenter(shape: Shape): Point {
     const b = measureTextShapeBounds(shape);
     if (b) return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     return { x: shape.x1, y: shape.y1 };
+  }
+  if (shape.type === 'arc' && shape.points && shape.points.length >= 3) {
+    const o = circumcircleThroughThreePoints(shape.points[0], shape.points[1], shape.points[2]);
+    if (o) return { x: o.cx, y: o.cy };
   }
   if (shape.type === 'polyline' && shape.points && shape.points.length > 0) {
     let minX = Infinity;

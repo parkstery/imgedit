@@ -353,7 +353,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton
           onClick={() => onToolChange('arc')}
           icon={<ArcToolbarIcon size={18} />}
-          label="아크 (반원: 끌어 지름, Alt 반대편)"
+          label="아크: 시작점 → 끝점 → 중간점(호 위)"
           active={state.tool === 'arc'}
         />
         <ToolbarButton
