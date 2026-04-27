@@ -28,6 +28,8 @@ export type Tool =
   | 'polyline'
   | 'rect'
   | 'ellipse'
+  /** 현: 지름을 두 끝점으로 하는 반원(Alt 누르면 반대편 반원) */
+  | 'arc'
   | 'fill'
   | 'text';
 
@@ -75,7 +77,7 @@ export interface EditorLayer {
 
 export interface Shape {
   id: string;
-  type: 'line' | 'rect' | 'ellipse' | 'polyline' | 'text';
+  type: 'line' | 'rect' | 'ellipse' | 'arc' | 'polyline' | 'text';
   x1: number;
   y1: number;
   x2: number;
@@ -89,6 +91,8 @@ export interface Shape {
   fontSize?: number;
   /** 회전 각(라디안). 기본 0. 회전 앵커는 항상 stored AABB의 중심. */
   rotation?: number;
+  /** type이 arc일 때 true면 반원을 chord 반대편에 그림(드래그 중 Alt) */
+  arcFlip?: boolean;
 }
 
 export interface EditorState {

@@ -131,6 +131,28 @@ function PolylineToolbarIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+function ArcToolbarIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="shrink-0"
+      aria-hidden
+    >
+      <path
+        d="M5 16 A 10 10 0 0 1 19 16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 interface ToolbarProps {
   state: EditorState;
   onOpen: () => void;
@@ -327,6 +349,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<Circle size={18} />} 
           label="원 그리기" 
           active={state.tool === 'ellipse'}
+        />
+        <ToolbarButton
+          onClick={() => onToolChange('arc')}
+          icon={<ArcToolbarIcon size={18} />}
+          label="아크 (반원: 끌어 지름, Alt 반대편)"
+          active={state.tool === 'arc'}
         />
         <ToolbarButton
           onClick={() => onToolChange('fill')}

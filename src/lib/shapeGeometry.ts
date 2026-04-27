@@ -1,4 +1,5 @@
 import type { Point, Rect, Shape } from '../types';
+import { getArcShapeBounds, hitTestArcShape } from './arcGeometry';
 import { getShapeRotationCenter, measureTextShapeBounds } from './drawShapes';
 
 export type CornerHandleId = 'TL' | 'TR' | 'BR' | 'BL';
@@ -24,6 +25,9 @@ export interface OrientedHandles {
 /** stored(=로컬, 회전 미적용) 좌표계 기준 AABB. */
 export function getShapeBounds(shape: Shape): Rect | null {
   if (shape.type === 'text') return measureTextShapeBounds(shape);
+  if (shape.type === 'arc') {
+    return getArcShapeBounds(shape);
+  }
   if (shape.type === 'polyline' && shape.points && shape.points.length > 0) {
     let minX = shape.points[0].x;
     let minY = shape.points[0].y;
@@ -147,6 +151,17 @@ export function getShapeWorldAabb(shape: Shape): Rect | null {
     };
   }
 
+  if (shape.type === 'arc') {
+    const b = getArcShapeBounds(shape);
+    if (!b) return null;
+    return aabbFromCorners([
+      { x: b.x, y: b.y },
+      { x: b.x + b.width, y: b.y },
+      { x: b.x + b.width, y: b.y + b.height },
+      { x: b.x, y: b.y + b.height },
+    ]);
+  }
+
   if (shape.type === 'polyline' && shape.points && shape.points.length > 0) {
     return aabbFromCorners(shape.points.map(p => ({ x: p.x, y: p.y })));
   }
@@ -254,6 +269,9 @@ export function hitTestShape(shape: Shape, p: Point, tolerance: number): boolean
     const cx = (shape.x1 + shape.x2) / 2;
     const cy = (shape.y1 + shape.y2) / 2;
     return distanceToEllipseBoundary(q, cx, cy, rx, ry) <= effectiveTol;
+  }
+  if (shape.type === 'arc') {
+    return hitTestArcShape(shape, q, effectiveTol);
   }
   if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
     for (let i = 1; i < shape.points.length; i++) {

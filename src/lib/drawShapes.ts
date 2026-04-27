@@ -1,4 +1,5 @@
 import type { Point, Shape, Rect } from '../types';
+import { getArcStrokeParams } from './arcGeometry';
 
 /** 한글·라틴 모두 쓰기 좋은 시스템 폰트 스택 */
 export const CANVAS_TEXT_FONT_STACK =
@@ -93,6 +94,11 @@ function drawShapePath(ctx: CanvasRenderingContext2D, shape: Shape) {
     const cx = (shape.x1 + shape.x2) / 2;
     const cy = (shape.y1 + shape.y2) / 2;
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  } else if (shape.type === 'arc') {
+    const ap = getArcStrokeParams(shape);
+    if (ap) {
+      ctx.arc(ap.cx, ap.cy, ap.r, ap.startAngle, ap.endAngle, ap.counterclockwise);
+    }
   } else if (shape.type === 'polyline' && shape.points && shape.points.length >= 2) {
     ctx.moveTo(shape.points[0].x, shape.points[0].y);
     for (let i = 1; i < shape.points.length; i++) {

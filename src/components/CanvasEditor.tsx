@@ -20,6 +20,7 @@ import {
   type ResizeHandleId,
   type PickedHandle,
 } from '../lib/shapeGeometry';
+import { getArcStrokeParams } from '../lib/arcGeometry';
 import {
   cloneLayersDeep,
   documentHasRaster,
@@ -77,6 +78,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         return '사각형 그리기';
       case 'ellipse':
         return '원 그리기';
+      case 'arc':
+        return '아크 그리기';
       case 'polyline':
         return '폴리라인';
       case 'freehand':
@@ -504,6 +507,11 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           const cx = (state.activeShape.x1 + state.activeShape.x2) / 2;
           const cy = (state.activeShape.y1 + state.activeShape.y2) / 2;
           ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        } else if (state.activeShape.type === 'arc') {
+          const ap = getArcStrokeParams(state.activeShape);
+          if (ap) {
+            ctx.arc(ap.cx, ap.cy, ap.r, ap.startAngle, ap.endAngle, ap.counterclockwise);
+          }
         }
         ctx.stroke();
     }
@@ -1241,7 +1249,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ...prev,
           activeShape: {
             id: Math.random().toString(36).substr(2, 9),
-            type: state.tool as 'line' | 'rect' | 'ellipse',
+            type: state.tool as 'line' | 'rect' | 'ellipse' | 'arc',
             x1: imgPos.x,
             y1: imgPos.y,
             x2: imgPos.x,
@@ -1517,6 +1525,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               ...prev.activeShape,
               x2: current.x,
               y2: current.y,
+              ...(prev.activeShape.type === 'arc' ? { arcFlip: e.altKey } : {}),
             }
           : null,
       }));
@@ -1605,25 +1614,39 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         setDragStart(null);
         return;
       }
+      const placed = state.activeShape;
+      const commitShape =
+        placed.type !== 'arc' ||
+        Math.hypot(placed.x2 - placed.x1, placed.y2 - placed.y1) >= 2;
       shapeEndGuardRef.current = true;
       setState(prev => {
+        const cur = prev.activeShape;
+        if (!cur) return { ...prev, activeShape: null };
         const al = getActiveLayer(prev.layers, prev.activeLayerId);
         const targetLayer =
           al && !al.locked
             ? al
             : prev.layers.find(l => !l.locked) ?? null;
         if (!targetLayer) return { ...prev, activeShape: null };
+        if (
+          cur.type === 'arc' &&
+          Math.hypot(cur.x2 - cur.x1, cur.y2 - cur.y1) < 2
+        ) {
+          return { ...prev, activeShape: null };
+        }
         return {
           ...prev,
           activeLayerId: targetLayer.id,
           layers: mapLayersReplaceActiveShapes(prev.layers, targetLayer.id, [
             ...targetLayer.shapes,
-            prev.activeShape!,
+            cur,
           ]),
           activeShape: null,
         };
       });
-      onShapeCommitted?.(getShapeCommitLabel(state.tool));
+      if (commitShape) {
+        onShapeCommitted?.(getShapeCommitLabel(state.tool));
+      }
       queueMicrotask(() => {
         shapeEndGuardRef.current = false;
       });
