@@ -23,6 +23,18 @@ export function createEditorLayer(name: string, shapes: Shape[] = []): EditorLay
   };
 }
 
+/** 기존 "레이어 N" 이름과 겹치지 않는 다음 기본 이름을 만듭니다. */
+export function getNextLayerName(layers: readonly EditorLayer[]): string {
+  let maxNo = 0;
+  for (const layer of layers) {
+    const m = /^레이어\s+(\d+)$/.exec(layer.name.trim());
+    if (!m) continue;
+    const n = Number.parseInt(m[1], 10);
+    if (!Number.isNaN(n)) maxNo = Math.max(maxNo, n);
+  }
+  return `레이어 ${maxNo + 1}`;
+}
+
 /** 모든 레이어 래스터 배치의 합집합(없으면 기본 문서 크기) */
 export function getDocumentCanvasSize(layers: readonly EditorLayer[]): { width: number; height: number } {
   let maxR = 0;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { EditorState } from '../types';
 import { cn } from '../lib/utils';
-import { createEditorLayer } from '../lib/layers';
+import { createEditorLayer, getNextLayerName } from '../lib/layers';
 import { Eye, EyeOff, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
 
 interface LayersPanelProps {
@@ -17,8 +17,7 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
 
   const addLayer = () => {
     setState(prev => {
-      const n = prev.layers.length + 1;
-      const L = createEditorLayer(`레이어 ${n}`);
+      const L = createEditorLayer(getNextLayerName(prev.layers));
       return {
         ...prev,
         layers: [...prev.layers, L],

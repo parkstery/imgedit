@@ -15,6 +15,7 @@ import {
   drawLayerStackToContext,
   getActiveLayer,
   getDocumentCanvasSize,
+  getNextLayerName,
   mapLayersReplaceActiveLayerRaster,
   mapLayersReplaceActiveShapes,
   totalShapeCount,
@@ -965,7 +966,7 @@ export default function App() {
       if (!cloned) return false;
       const before = cloneLayersDeep(s.layers);
       setState(prev => {
-        const L = createEditorLayer(`레이어 ${prev.layers.length + 1}`);
+        const L = createEditorLayer(getNextLayerName(prev.layers));
         return {
           ...prev,
           tool: 'select',
@@ -1050,7 +1051,7 @@ export default function App() {
           appendUndoEntry({ type: 'imageMerge', snapshot, label: '붙여넣기 (영역, 새 레이어)' });
           pushPasteUndoSnapshot(snapshot);
           setState(prev => {
-            const L = createEditorLayer(`레이어 ${prev.layers.length + 1}`);
+            const L = createEditorLayer(getNextLayerName(prev.layers));
             return {
               ...prev,
               layers: [
