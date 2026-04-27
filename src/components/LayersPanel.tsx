@@ -1,19 +1,43 @@
 import React, { useState } from 'react';
-import { EditorState } from '../types';
+import { EditorLayer, EditorState } from '../types';
 import { cn } from '../lib/utils';
-import { createEditorLayer, getNextLayerName } from '../lib/layers';
-import { Eye, EyeOff, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
+import { cloneLayersDeep, createEditorLayer, getNextLayerName } from '../lib/layers';
+import { Eye, EyeOff, GripVertical, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
+
+/** 패널은 위=전경(역순). dragId를 targetId 앞/뒤에 넣은 뒤 layers(아래→위)로 환산 */
+function buildLayersAfterDrop(
+  layers: readonly EditorLayer[],
+  dragId: string,
+  targetId: string,
+  placeAfter: boolean,
+): EditorLayer[] {
+  if (dragId === targetId) return [...layers];
+  const ordered = [...layers].reverse();
+  const dragged = ordered.find(l => l.id === dragId);
+  if (!dragged) return [...layers];
+  const rest = ordered.filter(l => l.id !== dragId);
+  const tIdx = rest.findIndex(l => l.id === targetId);
+  if (tIdx < 0) return [...layers];
+  const insertAt = placeAfter ? tIdx + 1 : tIdx;
+  const nextOrdered = [...rest.slice(0, insertAt), dragged, ...rest.slice(insertAt)];
+  return nextOrdered.reverse();
+}
 
 interface LayersPanelProps {
   state: EditorState;
   setState: React.Dispatch<React.SetStateAction<EditorState>>;
+  /** 레이어 순서 등 변경 시 실행 취소용 스냅샷 */
+  onLayersMutation?: (beforeLayers: EditorLayer[], beforeActiveLayerId: string, label?: string) => void;
 }
 
 /** 위쪽이 전경(상단 레이어)처럼 보이도록 역순 표시 */
-export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => {
+export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState, onLayersMutation }) => {
   const ordered = [...state.layers].reverse();
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [dropIndicator, setDropIndicator] = useState<{ targetId: string; placeAfter: boolean } | null>(
+    null,
+  );
 
   const addLayer = () => {
     setState(prev => {
@@ -88,6 +112,31 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
     setEditingName('');
   };
 
+  const clearDropIndicator = () => setDropIndicator(null);
+
+  const handleRowDragOver = (e: React.DragEvent, layerId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const el = e.currentTarget as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const placeAfter = e.clientY > rect.top + rect.height / 2;
+    setDropIndicator({ targetId: layerId, placeAfter });
+  };
+
+  const handleRowDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    clearDropIndicator();
+    const dragId = e.dataTransfer.getData('text/plain');
+    if (!dragId || dragId === targetId) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const placeAfter = e.clientY > rect.top + rect.height / 2;
+    const nextLayers = buildLayersAfterDrop(state.layers, dragId, targetId, placeAfter);
+    const unchanged = nextLayers.every((l, i) => l.id === state.layers[i].id);
+    if (unchanged) return;
+    onLayersMutation?.(cloneLayersDeep(state.layers), state.activeLayerId, '레이어 순서');
+    setState(prev => ({ ...prev, layers: nextLayers }));
+  };
+
   return (
     <aside className="w-52 shrink-0 border-l border-neutral-800 bg-neutral-900/90 flex flex-col min-h-0">
       <div className="px-2 py-2 border-b border-neutral-800 flex items-center justify-between gap-1">
@@ -115,12 +164,19 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-1 space-y-0.5 min-h-0">
+      <div
+        className="flex-1 overflow-y-auto p-1 space-y-0.5 min-h-0"
+        onDragLeave={e => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) clearDropIndicator();
+        }}
+      >
         {ordered.map(layer => (
           <div
             key={layer.id}
             role="button"
             tabIndex={0}
+            onDragOver={e => handleRowDragOver(e, layer.id)}
+            onDrop={e => handleRowDrop(e, layer.id)}
             onClick={() =>
               setState(s => ({
                 ...s,
@@ -146,9 +202,29 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState }) => 
               'w-full flex items-center gap-1 rounded px-1 py-1 text-left text-[11px] cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
               layer.id === state.activeLayerId
                 ? 'bg-blue-900/40 text-neutral-100 ring-1 ring-blue-500/40'
-                : 'text-neutral-300 hover:bg-neutral-800/80'
+                : 'text-neutral-300 hover:bg-neutral-800/80',
+              dropIndicator?.targetId === layer.id &&
+                !dropIndicator.placeAfter &&
+                'border-t-2 border-amber-400',
+              dropIndicator?.targetId === layer.id &&
+                dropIndicator.placeAfter &&
+                'border-b-2 border-amber-400'
             )}
           >
+            <span
+              draggable
+              title="끌어서 레이어 순서 변경 (위쪽이 전경)"
+              className="p-0.5 shrink-0 rounded text-neutral-500 hover:text-neutral-200 cursor-grab active:cursor-grabbing touch-none"
+              onClick={e => e.stopPropagation()}
+              onDragStart={e => {
+                e.stopPropagation();
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', layer.id);
+              }}
+              onDragEnd={clearDropIndicator}
+            >
+              <GripVertical size={14} aria-hidden />
+            </span>
             <button
               type="button"
               className="p-0.5 shrink-0 rounded text-neutral-400 hover:text-neutral-200"

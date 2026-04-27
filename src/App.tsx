@@ -1510,7 +1510,7 @@ export default function App() {
           areaCaptureArmed={areaCaptureArmed}
           onAreaCaptureResult={handleAreaCaptureResult}
         />
-        <LayersPanel state={state} setState={setState} />
+        <LayersPanel state={state} setState={setState} onLayersMutation={handleLayersMutation} />
       </main>
 
       <SaveModal 
