@@ -1281,26 +1281,39 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
         const isUndoKey = !e.shiftKey && (e.code === 'KeyZ' || e.key.toLowerCase() === 'z');
-        if (isUndoKey && pasteUndoRef.current.length > 0) {
-          const undoPoint = buildStateSnapshot(stateRef.current);
+        if (isUndoKey) {
+          const t = e.target;
+          if (
+            t instanceof HTMLTextAreaElement ||
+            t instanceof HTMLInputElement ||
+            (t instanceof HTMLElement && t.isContentEditable)
+          ) {
+            return;
+          }
+          if (pasteUndoRef.current.length > 0) {
+            const undoPoint = buildStateSnapshot(stateRef.current);
+            e.preventDefault();
+            const snaps = pasteUndoRef.current;
+            const snap = snaps[snaps.length - 1];
+            pasteUndoRef.current = snaps.slice(0, -1);
+            let st = [...undoStackRef.current];
+            while (st.length > 0) {
+              const top = st[st.length - 1];
+              st.pop();
+              if (top.type === 'image' || top.type === 'imageMerge') break;
+            }
+            undoStackRef.current = st;
+            setUndoStack(st);
+            applyImageSnapshot(snap);
+            if (undoPoint) {
+              const nextRedo = [...redoStackRef.current, undoPoint];
+              redoStackRef.current = nextRedo;
+              setRedoStack(nextRedo);
+            }
+            return;
+          }
           e.preventDefault();
-          const snaps = pasteUndoRef.current;
-          const snap = snaps[snaps.length - 1];
-          pasteUndoRef.current = snaps.slice(0, -1);
-          let st = [...undoStackRef.current];
-          while (st.length > 0) {
-            const t = st[st.length - 1];
-            st.pop();
-            if (t.type === 'image' || t.type === 'imageMerge') break;
-          }
-          undoStackRef.current = st;
-          setUndoStack(st);
-          applyImageSnapshot(snap);
-          if (undoPoint) {
-            const nextRedo = [...redoStackRef.current, undoPoint];
-            redoStackRef.current = nextRedo;
-            setRedoStack(nextRedo);
-          }
+          handleDeleteLastShape();
           return;
         }
 
@@ -1375,7 +1388,16 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [handleCopy, handleCut, handlePaste, handleSave, applyImageSnapshot, buildStateSnapshot, handleRedoLastShape]);
+  }, [
+    handleCopy,
+    handleCut,
+    handlePaste,
+    handleSave,
+    applyImageSnapshot,
+    buildStateSnapshot,
+    handleDeleteLastShape,
+    handleRedoLastShape,
+  ]);
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-blue-500/30">

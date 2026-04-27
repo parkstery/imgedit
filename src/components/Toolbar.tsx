@@ -399,6 +399,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             icon={<Undo2 size={18} />} 
             label="Undo" 
             disabled={!canUndoLast}
+            shortcut="Ctrl+Z"
           />
           <ToolbarButton
             onClick={onRedoLastShape}
