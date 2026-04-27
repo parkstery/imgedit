@@ -422,8 +422,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!documentHasRaster(state.layers)) return;
-
     const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
     const sx = scrollPosRef.current.x;
     const sy = scrollPosRef.current.y;
@@ -1232,11 +1230,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       shapeEndGuardRef.current = true;
       setState(prev => {
         const al = getActiveLayer(prev.layers, prev.activeLayerId);
-        if (!al || al.locked) return { ...prev, activeShape: null };
+        const targetLayer =
+          al && !al.locked
+            ? al
+            : prev.layers.find(l => !l.locked) ?? null;
+        if (!targetLayer) return { ...prev, activeShape: null };
         return {
           ...prev,
-          layers: mapLayersReplaceActiveShapes(prev.layers, prev.activeLayerId, [
-            ...al.shapes,
+          activeLayerId: targetLayer.id,
+          layers: mapLayersReplaceActiveShapes(prev.layers, targetLayer.id, [
+            ...targetLayer.shapes,
             prev.activeShape!,
           ]),
           activeShape: null,
