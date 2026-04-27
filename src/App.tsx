@@ -966,28 +966,44 @@ export default function App() {
       if (!cloned) return false;
       const before = cloneLayersDeep(s.layers);
       const activeLayer = getActiveLayer(s.layers, s.activeLayerId);
-      const { width: dw, height: dh } = getDocumentCanvasSize(s.layers);
+      if (!activeLayer) return false;
       const canvas = document.createElement('canvas');
-      canvas.width = dw;
-      canvas.height = dh;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return false;
-      if (activeLayer?.image) {
-        ctx.drawImage(activeLayer.image, activeLayer.imageX ?? 0, activeLayer.imageY ?? 0);
-      }
       const nx = payload.x + 20;
       const ny = payload.y + 20;
-      ctx.drawImage(cloned, nx, ny);
+      const pw = cloned.width;
+      const ph = cloned.height;
+      const hasBase = !!activeLayer.image;
+      const ax = activeLayer.imageX ?? 0;
+      const ay = activeLayer.imageY ?? 0;
+      const aw = activeLayer.image?.width ?? 0;
+      const ah = activeLayer.image?.height ?? 0;
+      const left = hasBase ? Math.min(ax, nx) : nx;
+      const top = hasBase ? Math.min(ay, ny) : ny;
+      const right = hasBase ? Math.max(ax + aw, nx + pw) : nx + pw;
+      const bottom = hasBase ? Math.max(ay + ah, ny + ph) : ny + ph;
+      canvas.width = Math.max(1, Math.ceil(right - left));
+      canvas.height = Math.max(1, Math.ceil(bottom - top));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return false;
+      if (activeLayer.image) {
+        ctx.drawImage(activeLayer.image, ax - left, ay - top);
+      }
+      ctx.drawImage(cloned, nx - left, ny - top);
       const merged = new Image();
       merged.onload = () => {
         setState(prev => ({
           ...prev,
           tool: 'select',
-          layers: mapLayersReplaceActiveLayerRaster(
-            prev.layers,
-            prev.activeLayerId,
-            merged,
-            activeLayer?.fileName ?? payload.fileName ?? 'pasted-image.png'
+          layers: prev.layers.map(l =>
+            l.id === prev.activeLayerId
+              ? {
+                  ...l,
+                  image: merged,
+                  fileName: activeLayer.fileName ?? payload.fileName ?? 'pasted-image.png',
+                  imageX: left,
+                  imageY: top,
+                }
+              : l
           ),
           selectedShapeIds: [],
           selectedRasterLayerId: prev.activeLayerId,
