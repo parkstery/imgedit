@@ -473,6 +473,9 @@ export function applyResize(
   }
   const sAvg = Math.sqrt(Math.max(1e-6, Math.abs(sx * sy)));
   next.lineWidth = Math.max(1, startShape.lineWidth * sAvg);
+  if (startShape.type === 'rect' && startShape.rectRadius != null) {
+    next.rectRadius = Math.max(0, startShape.rectRadius * Math.min(Math.abs(sx), Math.abs(sy)));
+  }
   if (startShape.type === 'text' && startShape.fontSize != null) {
     next.fontSize = Math.max(4, startShape.fontSize * Math.abs(sx));
   }

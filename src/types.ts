@@ -106,6 +106,8 @@ export interface Shape {
   rotation?: number;
   /** type이 arc이고 구식 2점만 있을 때: 지름 반원의 반대편 */
   arcFlip?: boolean;
+  /** type이 rect일 때 둥근 모서리 반지름(px). 기본 0 */
+  rectRadius?: number;
 }
 
 export interface EditorState {
@@ -122,6 +124,8 @@ export interface EditorState {
   lineStyle: LineStyle;
   /** 지우개 도구 브러시 크기(px) */
   eraserSize: number;
+  /** 사각형 도구 모서리 반지름(px), 기본 0 */
+  rectRadius: number;
   /** 텍스트 도구 글자 크기(px) */
   textFontSize: number;
   /** 텍스트 도구 기본 글자 모양 */

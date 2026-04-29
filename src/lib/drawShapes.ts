@@ -160,7 +160,17 @@ function drawShapePath(ctx: CanvasRenderingContext2D, shape: Shape) {
     ctx.moveTo(shape.x1, shape.y1);
     ctx.lineTo(shape.x2, shape.y2);
   } else if (shape.type === 'rect') {
-    ctx.strokeRect(shape.x1, shape.y1, shape.x2 - shape.x1, shape.y2 - shape.y1);
+    const x = Math.min(shape.x1, shape.x2);
+    const y = Math.min(shape.y1, shape.y2);
+    const w = Math.abs(shape.x2 - shape.x1);
+    const h = Math.abs(shape.y2 - shape.y1);
+    const radius = Math.max(0, Math.min(shape.rectRadius ?? 0, w / 2, h / 2));
+    if (radius <= 0) {
+      ctx.strokeRect(x, y, w, h);
+    } else {
+      ctx.roundRect(x, y, w, h, radius);
+      ctx.stroke();
+    }
     return;
   } else if (shape.type === 'ellipse') {
     const rx = Math.abs(shape.x2 - shape.x1) / 2;

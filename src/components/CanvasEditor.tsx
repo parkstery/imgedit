@@ -605,7 +605,16 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ctx.moveTo(state.activeShape.x1, state.activeShape.y1);
           ctx.lineTo(state.activeShape.x2, state.activeShape.y2);
         } else if (state.activeShape.type === 'rect') {
-          ctx.strokeRect(state.activeShape.x1, state.activeShape.y1, state.activeShape.x2 - state.activeShape.x1, state.activeShape.y2 - state.activeShape.y1);
+          const x = Math.min(state.activeShape.x1, state.activeShape.x2);
+          const y = Math.min(state.activeShape.y1, state.activeShape.y2);
+          const w = Math.abs(state.activeShape.x2 - state.activeShape.x1);
+          const h = Math.abs(state.activeShape.y2 - state.activeShape.y1);
+          const radius = Math.max(0, Math.min(state.activeShape.rectRadius ?? 0, w / 2, h / 2));
+          if (radius <= 0) {
+            ctx.strokeRect(x, y, w, h);
+          } else {
+            ctx.roundRect(x, y, w, h, radius);
+          }
         } else if (state.activeShape.type === 'ellipse') {
           const rx = Math.abs(state.activeShape.x2 - state.activeShape.x1) / 2;
           const ry = Math.abs(state.activeShape.y2 - state.activeShape.y1) / 2;
@@ -1549,6 +1558,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             color: state.color,
             lineWidth: state.lineWidth,
             lineStyle: state.lineStyle,
+            rectRadius: state.tool === 'rect' ? state.rectRadius : undefined,
           },
         }));
       }
@@ -2083,6 +2093,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   return (
     <div
       ref={viewportRef}
+      data-editor-canvas-viewport
       className={cn(
         'flex-1 min-h-0 bg-neutral-900 overflow-auto relative transition-colors touch-none',
         areaCaptureArmed

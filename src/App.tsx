@@ -37,6 +37,7 @@ import {
   cropCompositeToCircle,
   writeCanvasToClipboardPng,
 } from './lib/documentCapture';
+import { computeFitZoomPosition, getEditorCanvasViewportSize } from './lib/viewportFit';
 
 const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   zoom: 1,
@@ -50,6 +51,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   lineWidth: 2,
   lineStyle: 'solid',
   eraserSize: 24,
+  rectRadius: 0,
   textFontSize: 24,
   textBold: false,
   textItalic: false,
@@ -153,6 +155,14 @@ async function cloneImageElement(src: HTMLImageElement): Promise<HTMLImageElemen
   });
 }
 
+function fallbackViewportSize(): { w: number; h: number } {
+  if (typeof window === 'undefined') return { w: 960, h: 640 };
+  return {
+    w: Math.max(200, window.innerWidth - 280),
+    h: Math.max(200, window.innerHeight - 180),
+  };
+}
+
 export default function App() {
   const [state, setState] = useState<EditorState>(() => ({
     ...createFreshEditorState(),
@@ -174,10 +184,28 @@ export default function App() {
   const [areaCaptureArmed, setAreaCaptureArmed] = useState(false);
   const internalClipboardRef = useRef<InternalClipboardPayload | null>(null);
 
+  /** 레이어 반영 직후 layout 기준으로 뷰포트에 맞는 zoom·position (스크롤바 없이 보이도록) */
+  const applyDocumentLoadView = useCallback((buildNext: (prev: EditorState) => EditorState) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setState(prev => {
+          const next = buildNext(prev);
+          const vp = getEditorCanvasViewportSize() ?? fallbackViewportSize();
+          const doc = getDocumentCanvasSize(next.layers);
+          return {
+            ...next,
+            ...computeFitZoomPosition(doc.width, doc.height, vp.w, vp.h),
+          };
+        });
+        setCanvasScrollResetKey(k => k + 1);
+      });
+    });
+  }, []);
+
   // Initialize with a blank white canvas (1번 레이어에 래스터 귀속)
   useEffect(() => {
     loadBlankStarterImage(img => {
-      setState(prev => {
+      applyDocumentLoadView(prev => {
         const base = createFreshEditorState();
         const L0 = base.layers[0];
         return {
@@ -187,12 +215,10 @@ export default function App() {
           fillIgnoreAlpha: prev.fillIgnoreAlpha,
           textFontSize: prev.textFontSize,
           layers: [{ ...L0, image: img, fileName: 'new-image.png' }],
-          position: { x: 50, y: 50 },
-          zoom: 0.8,
         };
       });
     });
-  }, []);
+  }, [applyDocumentLoadView]);
 
   useLayoutEffect(() => {
     stateRef.current = state;
@@ -271,7 +297,7 @@ export default function App() {
         redoStackRef.current = [];
         setUndoStack([]);
         setRedoStack([]);
-        setState(prev => ({
+        applyDocumentLoadView(prev => ({
           ...prev,
           layers: prev.layers.map(l =>
             l.id === prev.activeLayerId
@@ -282,14 +308,12 @@ export default function App() {
           selectionCircle: null,
           selectedShapeIds: [],
           selectedRasterLayerId: null,
-          position: { x: 50, y: 50 },
-          zoom: 0.8,
         }));
       };
       img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
-  }, []);
+  }, [applyDocumentLoadView]);
 
   const handleOpen = () => {
     const input = document.createElement('input');
@@ -317,7 +341,7 @@ export default function App() {
     setRedoStack([]);
     setCanvasScrollResetKey(k => k + 1);
     loadBlankStarterImage(img => {
-      setState(prev => {
+      applyDocumentLoadView(prev => {
         const base = createFreshEditorState();
         const L0 = base.layers[0];
         return {
@@ -326,12 +350,10 @@ export default function App() {
           fillIgnoreAlpha: prev.fillIgnoreAlpha,
           textFontSize: prev.textFontSize,
           layers: [{ ...L0, image: img, fileName: 'new-image.png' }],
-          position: { x: 50, y: 50 },
-          zoom: 0.8,
         };
       });
     });
-  }, []);
+  }, [applyDocumentLoadView]);
 
   const handleSave = (filename?: string, format: string = 'image/png', quality: number = 0.92) => {
     if (!documentHasRaster(state.layers)) return;
@@ -408,6 +430,8 @@ export default function App() {
     setState(prev => ({ ...prev, lineStyle }));
   const handleEraserSizeChange = (eraserSize: number) =>
     setState(prev => ({ ...prev, eraserSize: Math.max(2, Math.min(200, Math.round(eraserSize))) }));
+  const handleRectRadiusChange = (rectRadius: number) =>
+    setState(prev => ({ ...prev, rectRadius: Math.max(0, Math.min(999, Math.round(rectRadius))) }));
   const handleTextFontSizeChange = (textFontSize: number) => {
     const next = Math.max(8, Math.min(256, Math.round(textFontSize)));
     setState(prev => ({
@@ -835,6 +859,12 @@ export default function App() {
         y2: shape.y2 * scaleY,
         lineWidth: shape.lineWidth * Math.sqrt(scaleX * scaleY),
       };
+      if (shape.type === 'rect' && shape.rectRadius != null) {
+        return {
+          ...base,
+          rectRadius: shape.rectRadius * Math.min(scaleX, scaleY),
+        };
+      }
       if (shape.type === 'polyline' && shape.points) {
         return {
           ...base,
@@ -1217,7 +1247,7 @@ export default function App() {
     if (!documentHasRaster(s.layers) || asNew) {
       appendUndoEntry({ type: 'image', snapshot, label: '붙여넣기 (새 이미지)' });
       pushPasteUndoSnapshot(snapshot);
-      setState(prev => {
+      applyDocumentLoadView(prev => {
         const fresh = createFreshEditorState();
         const L0 = fresh.layers[0];
         return {
@@ -1225,8 +1255,6 @@ export default function App() {
           tool: 'select',
           layers: [{ ...L0, image: img, fileName: 'pasted-image.png' }],
           activeLayerId: L0.id,
-          zoom: 1,
-          position: { x: 50, y: 50 },
           selection: null,
           selectionCircle: null,
           selectedShapeIds: [],
@@ -1305,7 +1333,7 @@ export default function App() {
       };
       mergedImg.src = mergedDataUrl;
     }
-  }, [appendUndoEntry, pushPasteUndoSnapshot]);
+  }, [appendUndoEntry, pushPasteUndoSnapshot, applyDocumentLoadView]);
 
   const handlePaste = useCallback(async (clipboardData?: DataTransfer, asNew: boolean = false) => {
     try {
@@ -1502,6 +1530,7 @@ export default function App() {
         onLineWidthChange={handleLineWidthChange}
         onLineStyleChange={handleLineStyleChange}
         onEraserSizeChange={handleEraserSizeChange}
+        onRectRadiusChange={handleRectRadiusChange}
         onTextFontSizeChange={handleTextFontSizeChange}
         onTextStyleChange={handleTextStyleChange}
         onFillToleranceChange={handleFillToleranceChange}

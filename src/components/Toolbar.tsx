@@ -171,6 +171,7 @@ interface ToolbarProps {
   onLineWidthChange: (lineWidth: number) => void;
   onLineStyleChange: (lineStyle: LineStyle) => void;
   onEraserSizeChange: (eraserSize: number) => void;
+  onRectRadiusChange: (radius: number) => void;
   onTextFontSizeChange: (px: number) => void;
   onTextStyleChange: (next: Partial<Pick<EditorState, 'textBold' | 'textItalic' | 'textUnderline'>>) => void;
   onFillToleranceChange: (tolerance: number) => void;
@@ -217,6 +218,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onLineWidthChange,
   onLineStyleChange,
   onEraserSizeChange,
+  onRectRadiusChange,
   onTextFontSizeChange,
   onTextStyleChange,
   onFillToleranceChange,
@@ -351,6 +353,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="사각형 그리기" 
           active={state.tool === 'rect'}
         />
+        {state.tool === 'rect' && (
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-[10px] text-neutral-400">R</span>
+            <input
+              type="number"
+              min={0}
+              max={999}
+              step={1}
+              value={state.rectRadius}
+              onChange={(e) =>
+                onRectRadiusChange(Math.max(0, Math.min(999, parseInt(e.target.value || '0', 10))))
+              }
+              className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-[11px] text-center text-neutral-200 focus:outline-none focus:border-blue-500"
+              title="직사각형 반지름(px, 위/아래 화살표로 조절)"
+              aria-label="직사각형 반지름"
+            />
+          </div>
+        )}
         <ToolbarButton 
           onClick={() => onToolChange('ellipse')} 
           icon={<Circle size={18} />} 
@@ -497,7 +517,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             />
           </div>
         )}
-        
         <div className="flex items-center gap-1 ml-1 px-1 border-l border-neutral-700">
           <input 
             type="color" 
@@ -655,7 +674,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <span className="text-xs text-neutral-500">%</span>
         </div>
 
-        <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="맞춤" />
+        <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="원본크기" />
       </div>
       </div>
 
