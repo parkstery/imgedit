@@ -37,6 +37,7 @@ import { cn } from '../lib/utils';
 import { AdvancedColorWindow } from './AdvancedColorWindow';
 import { documentHasRaster, totalShapeCount } from '../lib/layers';
 import { Button } from './ui/Button';
+import { formStyles } from './ui/formStyles';
 
 /** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
 const PAINT_PALETTE = [
@@ -366,7 +367,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               onChange={(e) =>
                 onRectRadiusChange(Math.max(0, Math.min(999, parseInt(e.target.value || '0', 10))))
               }
-              className="w-12 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-[11px] text-center text-neutral-200 focus:outline-none focus:border-blue-500"
+              className={cn('w-12 px-1 py-0.5 text-[11px] text-center', formStyles.inputBase)}
               title="직사각형 반지름(px, 위/아래 화살표로 조절)"
               aria-label="직사각형 반지름"
             />
@@ -415,7 +416,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               onChange={(e) =>
                 onTextFontSizeChange(Math.max(8, Math.min(256, parseInt(e.target.value || '24', 10))))
               }
-              className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              className={cn('w-14 px-1.5 py-0.5 text-xs text-center', formStyles.inputBase)}
               title="텍스트 크기(px)"
             />
             <Button
@@ -464,7 +465,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 step={1}
                 value={state.fillTolerance}
                 onChange={(e) => onFillToleranceChange(parseInt(e.target.value, 10))}
-                className="w-20 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                className={cn('w-20 bg-neutral-700', formStyles.sliderBase)}
                 title="페인트통 색 일치 허용 오차 (높을수록 넓게 채움)"
                 aria-labelledby="fill-tolerance-label"
                 aria-valuemin={0}
@@ -501,7 +502,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               step={1}
               value={state.eraserSize}
               onChange={(e) => onEraserSizeChange(parseInt(e.target.value || '24', 10))}
-              className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              className={cn('w-14 px-1.5 py-0.5 text-xs text-center', formStyles.inputBase)}
               title="지우개 크기(px)"
             />
           </div>
@@ -523,13 +524,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               step="1"
               value={state.lineWidth}
               onChange={(e) => onLineWidthChange(Math.max(1, Math.min(50, parseInt(e.target.value || '1', 10))))}
-              className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              className={cn('w-14 px-1.5 py-0.5 text-xs text-center', formStyles.inputBase)}
               title="선두께 (위/아래 화살표로 조절)"
             />
             <select
               value={state.lineStyle}
               onChange={(e) => onLineStyleChange(e.target.value as LineStyle)}
-              className="w-20 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
+              className={cn('w-20 px-1 py-0.5 text-xs text-center', formStyles.selectBase)}
               title="선 종류"
             >
               <option value="solid">실선</option>
@@ -612,7 +613,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     (e.target as HTMLInputElement).blur();
                   }
                 }}
-                className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-xs text-center tabular-nums focus:outline-none focus:border-blue-500"
+                className={cn('w-14 px-1 py-0.5 text-xs text-center tabular-nums', formStyles.inputBase)}
                 aria-label="선택 개체 회전 각도(도)"
               />
               <Button
@@ -640,7 +641,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             step="0.01" 
             value={state.zoom} 
             onChange={(e) => onZoomChange(parseFloat(e.target.value))}
-            className="w-16 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            className={cn('w-16 bg-neutral-700', formStyles.sliderBase)}
           />
           <ToolbarButton onClick={onZoomIn} icon={<ZoomIn size={18} />} label="확대" />
         </div>
@@ -652,7 +653,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             max="800" 
             value={Math.round(state.zoom * 100)} 
             onChange={(e) => onZoomChange(parseInt(e.target.value) / 100)}
-            className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-xs text-center focus:outline-none focus:border-blue-500"
+            className={cn('w-16 px-2 py-1 text-xs text-center', formStyles.inputBase)}
           />
           <span className="text-xs text-neutral-500">%</span>
         </div>
@@ -721,7 +722,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           readOnly
           value={state.color.toLowerCase()}
           title="현재 색상 HEX 값"
-          className="w-24 h-6 bg-neutral-900 border border-neutral-700 rounded px-1 text-[15px] leading-none text-neutral-200 font-mono select-text cursor-text"
+          className={cn('w-24 h-6 px-1 text-[15px] leading-none select-text cursor-text', formStyles.inputBase, formStyles.inputMono)}
         />
         {PAINT_PALETTE.map((c) => (
           <button

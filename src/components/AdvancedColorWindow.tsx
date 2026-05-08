@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Pipette, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Button } from './ui/Button';
+import { formStyles } from './ui/formStyles';
 
 export interface AdvancedColorWindowProps {
   isOpen: boolean;
@@ -453,7 +454,7 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
             step={1}
             value={Math.round(v * 100)}
             onChange={e => applyHsv(h, s, parseInt(e.target.value, 10) / 100)}
-            className="w-full h-1.5 rounded-lg accent-blue-500 cursor-pointer"
+            className={cn('w-full', formStyles.sliderBase)}
           />
         </div>
 
@@ -493,7 +494,11 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
                   }
                 }}
                 spellCheck={false}
-                className="min-w-0 flex-1 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={cn(
+                  'min-w-0 flex-1 px-1.5 py-1 text-[11px] focus:ring-1 focus:ring-blue-500',
+                  formStyles.inputBase,
+                  formStyles.inputMono
+                )}
               />
             </div>
             {eyeDropperSupported ? (
@@ -550,7 +555,11 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
               }}
               spellCheck={false}
               placeholder="0–255, 0–255, 0–255"
-              className="min-w-0 flex-1 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-1 font-mono text-[11px] text-neutral-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={cn(
+                'min-w-0 flex-1 px-1.5 py-1 text-[11px] focus:ring-1 focus:ring-blue-500',
+                formStyles.inputBase,
+                formStyles.inputMono
+              )}
             />
           </div>
         </div>

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
+import { cn } from '../lib/utils';
+import { formStyles } from './ui/formStyles';
 
 interface SaveModalProps {
   isOpen: boolean;
@@ -67,7 +69,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({ isOpen, onClose, onSave, d
                   type="text"
                   value={filename}
                   onChange={(e) => setFilename(e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 text-neutral-100 focus:outline-none focus:border-blue-500 transition-colors"
+                  className={cn('w-full rounded-lg px-4 py-2', formStyles.inputBase)}
                   placeholder="파일명 입력..."
                 />
               </div>
@@ -101,7 +103,7 @@ export const SaveModal: React.FC<SaveModalProps> = ({ isOpen, onClose, onSave, d
                     max="100"
                     value={quality}
                     onChange={(e) => setQuality(parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-neutral-900 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    className={cn('w-full bg-neutral-900', formStyles.sliderBase)}
                   />
                 </div>
               )}

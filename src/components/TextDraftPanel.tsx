@@ -3,6 +3,8 @@ import { EditorState, Shape } from '../types';
 import { getActiveLayer, mapLayersReplaceActiveShapes } from '../lib/layers';
 import { CANVAS_TEXT_FONT_STACK } from '../lib/drawShapes';
 import { Button } from './ui/Button';
+import { cn } from '../lib/utils';
+import { formStyles } from './ui/formStyles';
 
 interface TextDraftPanelProps {
   state: EditorState;
@@ -115,7 +117,7 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
           lang="ko"
           rows={3}
           placeholder="여기에 여러 줄 입력 (Ctrl+Enter로 확정)"
-          className="box-border w-full min-w-0 rounded border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-sm text-left outline-none resize-y focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/25 sm:min-w-[14rem]"
+          className={cn('box-border w-full min-w-0 px-2.5 py-2 sm:min-w-[14rem]', formStyles.textareaBase)}
           style={{
             fontFamily: CANVAS_TEXT_FONT_STACK,
             color: d.color,

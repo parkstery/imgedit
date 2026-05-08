@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Scale, Link, Link2Off } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
+import { cn } from '../lib/utils';
+import { formStyles } from './ui/formStyles';
 
 interface ResizeModalProps {
   isOpen: boolean;
@@ -94,7 +96,7 @@ export const ResizeModal: React.FC<ResizeModalProps> = ({
                   max="200"
                   value={percentage}
                   onChange={(e) => handlePercentageChange(parseInt(e.target.value))}
-                  className="w-full h-1.5 bg-neutral-900 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  className={cn('w-full bg-neutral-900', formStyles.sliderBase)}
                 />
                 <div className="grid grid-cols-4 gap-2">
                   {[25, 50, 75, 100].map(pct => (
@@ -118,7 +120,7 @@ export const ResizeModal: React.FC<ResizeModalProps> = ({
                     type="number"
                     value={width}
                     onChange={(e) => handleWidthChange(parseInt(e.target.value) || 0)}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-100 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                    className={cn('w-full rounded-lg px-3 py-2 text-sm', formStyles.inputBase)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -127,7 +129,7 @@ export const ResizeModal: React.FC<ResizeModalProps> = ({
                     type="number"
                     value={height}
                     onChange={(e) => handleHeightChange(parseInt(e.target.value) || 0)}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-100 focus:outline-none focus:border-blue-500 transition-colors text-sm"
+                    className={cn('w-full rounded-lg px-3 py-2 text-sm', formStyles.inputBase)}
                   />
                 </div>
                 <Button

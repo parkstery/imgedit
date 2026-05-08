@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { X, Maximize2, Link, Link2Off } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/Button';
+import { cn } from '../lib/utils';
+import { formStyles } from './ui/formStyles';
 
 interface CanvasSizeModalProps {
   isOpen: boolean;
@@ -78,7 +80,7 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                     type="number"
                     value={width}
                     onChange={(e) => handleWidthChange(parseInt(e.target.value) || 0)}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-100 focus:outline-none focus:border-emerald-500 transition-colors text-sm"
+                    className={cn('w-full rounded-lg px-3 py-2 text-sm focus:border-emerald-500', formStyles.inputBase)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -87,7 +89,7 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                     type="number"
                     value={height}
                     onChange={(e) => handleHeightChange(parseInt(e.target.value) || 0)}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-100 focus:outline-none focus:border-emerald-500 transition-colors text-sm"
+                    className={cn('w-full rounded-lg px-3 py-2 text-sm focus:border-emerald-500', formStyles.inputBase)}
                   />
                 </div>
                 <Button
