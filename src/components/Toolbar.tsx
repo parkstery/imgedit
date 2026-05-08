@@ -289,11 +289,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <div
       className={cn(
-        'h-12 bg-neutral-800 border-b border-neutral-700 flex items-center gap-1 px-2 shrink-0 overflow-x-auto overflow-y-hidden no-scrollbar relative z-30',
+        'bg-neutral-800 border-b border-neutral-700 grid grid-flow-col auto-cols-max grid-rows-3 xl:grid-rows-2 content-center items-center gap-x-2 gap-y-1 px-2 py-1.5 shrink-0 overflow-x-auto overflow-y-hidden no-scrollbar relative z-30',
         compactUi && '[&_.tb-btn]:h-7 [&_.tb-btn]:w-7 [&_.tb-input]:h-6 [&_.tb-input]:py-0 [&_.tb-group]:gap-0.5'
       )}
     >
-      <div className="flex min-w-max items-center gap-1 shrink-0">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700 shrink-0 tb-group">
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
         <ToolbarButton onClick={onNewCanvas} icon={<FilePlus size={18} />} label="새 캔버스" />
@@ -684,7 +683,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           밀도
         </Button>
-      </div>
       </div>
 
       <div className="flex items-center justify-end gap-x-1 border-l border-neutral-700 pl-2 shrink-0 tb-group">
