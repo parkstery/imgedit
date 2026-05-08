@@ -248,6 +248,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
   const advancedColorAnchorRef = useRef<HTMLButtonElement>(null);
   const [rotationDraft, setRotationDraft] = useState('');
+  const [compactUi, setCompactUi] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('toolbarCompactUi') === '1';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('toolbarCompactUi', compactUi ? '1' : '0');
+  }, [compactUi]);
 
   useEffect(() => {
     if (selectionRotationDeg == null) {
@@ -276,7 +285,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   };
 
   return (
-    <div className="min-h-14 bg-neutral-800 border-b border-neutral-700 flex flex-col gap-y-1 py-1.5 px-2 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30 lg:flex-row lg:items-center lg:gap-y-0 lg:py-0 lg:min-h-14">
+    <div
+      className={cn(
+        'min-h-14 bg-neutral-800 border-b border-neutral-700 flex flex-col gap-y-1 py-1.5 px-2 shrink-0 overflow-x-auto overflow-y-visible no-scrollbar relative z-30 lg:flex-row lg:items-center lg:gap-y-0 lg:py-0 lg:min-h-14',
+        compactUi && '[&_.tb-btn]:h-7 [&_.tb-btn]:w-7 [&_.tb-input]:py-0 [&_.tb-group]:gap-0.5'
+      )}
+    >
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1 lg:min-h-14 lg:gap-y-1">
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700">
         <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
@@ -631,9 +645,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-2 border-r border-neutral-700">
-        <div className="flex items-center gap-0.5">
-          <ToolbarButton onClick={onZoomOut} icon={<ZoomOut size={18} />} label="축소" />
+      <div className="flex items-center gap-2 px-2 border-r border-neutral-700 tb-group">
+        <div className="flex items-center gap-0.5 tb-group">
+          <ToolbarButton onClick={onZoomOut} icon={<ZoomOut size={18} />} label="축소" compact={compactUi} />
           <input 
             type="range" 
             min="0.01" 
@@ -643,7 +657,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onChange={(e) => onZoomChange(parseFloat(e.target.value))}
             className={cn('w-16 bg-neutral-700', formStyles.sliderBase)}
           />
-          <ToolbarButton onClick={onZoomIn} icon={<ZoomIn size={18} />} label="확대" />
+          <ToolbarButton onClick={onZoomIn} icon={<ZoomIn size={18} />} label="확대" compact={compactUi} />
         </div>
         
         <div className="flex items-center gap-2">
@@ -653,12 +667,21 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             max="800" 
             value={Math.round(state.zoom * 100)} 
             onChange={(e) => onZoomChange(parseInt(e.target.value) / 100)}
-            className={cn('w-16 px-2 py-1 text-xs text-center', formStyles.inputBase)}
+            className={cn('tb-input w-16 px-2 py-1 text-xs text-center', formStyles.inputBase)}
           />
           <span className="text-xs text-neutral-500">%</span>
         </div>
 
-        <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="원본크기" />
+        <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="원본크기" compact={compactUi} />
+        <Button
+          size="sm"
+          variant={compactUi ? 'primary' : 'secondary'}
+          className="h-7 px-2 text-[10px]"
+          onClick={() => setCompactUi(v => !v)}
+          title="툴바 밀도 전환"
+        >
+          밀도
+        </Button>
       </div>
       </div>
 
@@ -750,16 +773,17 @@ interface ToolbarButtonProps {
   disabled?: boolean;
   shortcut?: string;
   active?: boolean;
+  compact?: boolean;
 }
 
-const ToolbarButton: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, disabled, shortcut, active }) => (
+const ToolbarButton: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, disabled, shortcut, active, compact = false }) => (
   <Button
     onClick={onClick}
     disabled={disabled}
     title={shortcut ? `${label} (${shortcut})` : label}
     variant={active ? 'primary' : 'ghost'}
     size="icon"
-    className="h-8 w-8"
+    className={cn('tb-btn', compact ? 'h-7 w-7' : 'h-8 w-8')}
   >
     {icon}
   </Button>

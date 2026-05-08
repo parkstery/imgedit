@@ -64,7 +64,7 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700">
               <h2 className="text-lg font-semibold text-neutral-100 flex items-center gap-2">
-                <Maximize2 size={20} className="text-emerald-400" />
+                <Maximize2 size={20} className="text-blue-400" />
                 캔버스 크기 (잘라내기/확장)
               </h2>
               <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8 rounded-full">
@@ -80,7 +80,7 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                     type="number"
                     value={width}
                     onChange={(e) => handleWidthChange(parseInt(e.target.value) || 0)}
-                    className={cn('w-full rounded-lg px-3 py-2 text-sm focus:border-emerald-500', formStyles.inputBase)}
+                    className={cn('w-full rounded-lg px-3 py-2 text-sm', formStyles.inputBase)}
                   />
                 </div>
                 <div className="space-y-2">
@@ -89,7 +89,7 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                     type="number"
                     value={height}
                     onChange={(e) => handleHeightChange(parseInt(e.target.value) || 0)}
-                    className={cn('w-full rounded-lg px-3 py-2 text-sm focus:border-emerald-500', formStyles.inputBase)}
+                    className={cn('w-full rounded-lg px-3 py-2 text-sm', formStyles.inputBase)}
                   />
                 </div>
                 <Button
@@ -103,8 +103,8 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                 </Button>
               </div>
 
-              <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
-                <p className="text-[11px] text-emerald-400/80 leading-relaxed">
+              <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                <p className="text-[11px] text-blue-400/80 leading-relaxed">
                   💡 이미지를 지정된 크기에 맞춰 늘리거나 줄입니다. <br/>
                   그려진 도형들도 비율에 맞춰 자동으로 조정됩니다.
                 </p>
