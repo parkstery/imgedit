@@ -36,6 +36,7 @@ import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
 import { AdvancedColorWindow } from './AdvancedColorWindow';
 import { documentHasRaster, totalShapeCount } from '../lib/layers';
+import { Button } from './ui/Button';
 
 /** 오른쪽 팔레트(클릭 시 현재 그리기 색으로 설정) */
 const PAINT_PALETTE = [
@@ -417,45 +418,33 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:border-blue-500"
               title="텍스트 크기(px)"
             />
-            <button
-              type="button"
+            <Button
               onClick={() => onTextStyleChange({ textBold: !state.textBold })}
-              className={cn(
-                'h-6 w-6 rounded border text-[11px] font-bold',
-                state.textBold
-                  ? 'border-blue-500 bg-blue-600 text-white'
-                  : 'border-neutral-700 bg-neutral-950 text-neutral-200 hover:bg-neutral-800',
-              )}
+              size="icon"
+              variant={state.textBold ? 'primary' : 'secondary'}
+              className="h-6 w-6 text-[11px] font-bold"
               title="굵게"
             >
               B
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => onTextStyleChange({ textItalic: !state.textItalic })}
-              className={cn(
-                'h-6 w-6 rounded border text-[11px] italic',
-                state.textItalic
-                  ? 'border-blue-500 bg-blue-600 text-white'
-                  : 'border-neutral-700 bg-neutral-950 text-neutral-200 hover:bg-neutral-800',
-              )}
+              size="icon"
+              variant={state.textItalic ? 'primary' : 'secondary'}
+              className="h-6 w-6 text-[11px] italic"
               title="기울임"
             >
               I
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={() => onTextStyleChange({ textUnderline: !state.textUnderline })}
-              className={cn(
-                'h-6 w-6 rounded border text-[11px] underline',
-                state.textUnderline
-                  ? 'border-blue-500 bg-blue-600 text-white'
-                  : 'border-neutral-700 bg-neutral-950 text-neutral-200 hover:bg-neutral-800',
-              )}
+              size="icon"
+              variant={state.textUnderline ? 'primary' : 'secondary'}
+              className="h-6 w-6 text-[11px] underline"
               title="밑줄"
             >
               U
-            </button>
+            </Button>
           </div>
         )}
         {state.tool === 'fill' && (
@@ -600,19 +589,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               title="절대 각도(도). Enter 또는 포커스 해제로 적용. 화살표는 45°씩 조절"
             >
               <span className="text-[10px] text-neutral-400 whitespace-nowrap pr-0.5">각도 °</span>
-              <button
-                type="button"
+              <Button
                 onClick={() => stepRotationBy45(-45)}
-                className={cn(
-                  'p-0.5 rounded flex items-center justify-center shrink-0',
-                  'text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600',
-                  'focus:outline-none focus:ring-1 focus:ring-blue-500',
-                )}
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
                 title="45° 감소"
                 aria-label="회전 각도 45도 감소"
               >
                 <ArrowLeft size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
-              </button>
+              </Button>
               <input
                 type="text"
                 inputMode="decimal"
@@ -629,19 +615,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 className="w-14 bg-neutral-900 border border-neutral-700 rounded px-1 py-0.5 text-xs text-center tabular-nums focus:outline-none focus:border-blue-500"
                 aria-label="선택 개체 회전 각도(도)"
               />
-              <button
-                type="button"
+              <Button
                 onClick={() => stepRotationBy45(45)}
-                className={cn(
-                  'p-0.5 rounded flex items-center justify-center shrink-0',
-                  'text-neutral-200 hover:bg-neutral-700 active:bg-neutral-600',
-                  'focus:outline-none focus:ring-1 focus:ring-blue-500',
-                )}
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
                 title="45° 증가"
                 aria-label="회전 각도 45도 증가"
               >
                 <ArrowRight size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -709,11 +692,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       <div className="flex items-center gap-0.5 border-t border-neutral-700 mt-1 pt-1 -mx-2 px-2">
-        <button
+        <Button
           ref={advancedColorAnchorRef}
-          type="button"
           onClick={() => setAdvancedColorOpen(true)}
-          className="relative w-5 h-5 rounded border border-neutral-500 cursor-pointer overflow-hidden hover:ring-2 hover:ring-blue-400/80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          variant="secondary"
+          size="icon"
+          className="relative h-6 w-6 overflow-hidden border-neutral-500 p-0"
           title="고급 색상 선택"
           aria-label="고급 색상 선택"
           aria-haspopup="dialog"
@@ -724,7 +708,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <div className="absolute inset-0 flex items-center justify-center text-white/90 pointer-events-none">
             <Palette size={12} />
           </div>
-        </button>
+        </Button>
         <AdvancedColorWindow
           isOpen={advancedColorOpen}
           anchorRef={advancedColorAnchorRef}
@@ -768,17 +752,14 @@ interface ToolbarButtonProps {
 }
 
 const ToolbarButton: React.FC<ToolbarButtonProps> = ({ onClick, icon, label, disabled, shortcut, active }) => (
-  <button
-    type="button"
+  <Button
     onClick={onClick}
     disabled={disabled}
     title={shortcut ? `${label} (${shortcut})` : label}
-    className={cn(
-      "p-1.5 rounded-md transition-colors flex items-center justify-center",
-      "hover:bg-neutral-700 active:bg-neutral-600 disabled:opacity-30 disabled:cursor-not-allowed",
-      active ? "bg-blue-600 text-white hover:bg-blue-500" : "text-neutral-200"
-    )}
+    variant={active ? 'primary' : 'ghost'}
+    size="icon"
+    className="h-8 w-8"
   >
     {icon}
-  </button>
+  </Button>
 );

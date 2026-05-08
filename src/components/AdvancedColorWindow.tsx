@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { Pipette, X } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { Button } from './ui/Button';
 
 export interface AdvancedColorWindowProps {
   isOpen: boolean;
@@ -392,18 +393,19 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
         <h2 id="advanced-color-title" className="text-xs font-semibold text-neutral-100 truncate pr-1">
           고급 색상 선택
         </h2>
-        <button
-          type="button"
+        <Button
           onClick={e => {
             e.stopPropagation();
             onRequestClose();
           }}
           onPointerDown={e => e.stopPropagation()}
-          className="shrink-0 flex items-center gap-0.5 rounded border border-neutral-600 bg-neutral-900 px-1.5 py-0.5 text-[10px] font-medium text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          variant="secondary"
+          size="sm"
+          className="h-6 px-1.5 text-[10px]"
         >
           <X size={12} className="shrink-0 opacity-80" aria-hidden />
           닫기
-        </button>
+        </Button>
       </div>
 
       <div className="p-2.5 space-y-2.5">
@@ -495,24 +497,21 @@ export const AdvancedColorWindow: React.FC<AdvancedColorWindowProps> = ({
               />
             </div>
             {eyeDropperSupported ? (
-              <button
-                type="button"
+              <Button
                 disabled={eyedropperBusy}
                 onClick={() => void runEyedropper()}
                 title="화면에서 색 추출. 색을 고른 뒤에도 버튼은 활성으로 유지되며, 누를 때마다 다시 스포이드를 사용할 수 있습니다."
                 aria-pressed={eyedropperActive}
+                variant={eyedropperActive ? 'primary' : 'secondary'}
+                size="sm"
                 className={cn(
-                  'inline-flex shrink-0 items-center gap-1 rounded border bg-neutral-900 px-1.5 py-1 text-[10px] font-medium',
-                  'focus:outline-none focus:ring-2 focus:ring-blue-500',
-                  eyedropperActive
-                    ? 'border-blue-400 bg-blue-950/50 text-blue-100 ring-1 ring-blue-500/60'
-                    : 'border-neutral-600 text-neutral-200 hover:bg-neutral-700 hover:border-neutral-500',
-                  'disabled:opacity-50 disabled:pointer-events-none'
+                  'h-6 px-1.5 text-[10px]',
+                  eyedropperActive && 'ring-1 ring-blue-500/60'
                 )}
               >
                 <Pipette size={12} className="shrink-0" aria-hidden />
                 스포이드
-              </button>
+              </Button>
             ) : (
               <span className="text-[9px] text-neutral-500">스포이드는 Chrome·Edge 등에서 지원됩니다.</span>
             )}
