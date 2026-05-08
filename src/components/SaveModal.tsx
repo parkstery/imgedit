@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Button } from './ui/Button';
 
 interface SaveModalProps {
   isOpen: boolean;
@@ -54,9 +55,9 @@ export const SaveModal: React.FC<SaveModalProps> = ({ isOpen, onClose, onSave, d
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-700">
               <h2 className="text-lg font-semibold text-neutral-100">다른 이름으로 저장</h2>
-              <button onClick={onClose} className="p-1 hover:bg-neutral-700 rounded-full transition-colors">
+              <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8 rounded-full">
                 <X size={20} className="text-neutral-400" />
-              </button>
+              </Button>
             </div>
 
             <div className="p-6 space-y-6">
@@ -75,18 +76,15 @@ export const SaveModal: React.FC<SaveModalProps> = ({ isOpen, onClose, onSave, d
                 <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">포맷</label>
                 <div className="grid grid-cols-1 gap-2">
                   {FORMATS.map((f) => (
-                    <button
+                    <Button
                       key={f.value}
                       onClick={() => setFormat(f.value)}
-                      className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
-                        format === f.value
-                          ? 'bg-blue-500/10 border-blue-500 text-blue-400'
-                          : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-600'
-                      }`}
+                      variant={format === f.value ? 'primary' : 'secondary'}
+                      className="h-auto w-full items-center justify-between rounded-lg px-4 py-3"
                     >
                       <span className="font-medium">{f.label}</span>
                       <span className="text-[10px] opacity-60 uppercase font-mono">.{f.ext}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -110,19 +108,21 @@ export const SaveModal: React.FC<SaveModalProps> = ({ isOpen, onClose, onSave, d
             </div>
 
             <div className="px-6 py-4 bg-neutral-900/50 border-t border-neutral-700 flex gap-3">
-              <button
+              <Button
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors font-medium"
+                variant="secondary"
+                className="h-9 flex-1 rounded-lg"
               >
                 취소
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleSaveClick}
-                className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors font-medium flex items-center justify-center gap-2"
+                variant="primary"
+                className="h-9 flex-1 rounded-lg"
               >
                 <Download size={18} />
                 저장하기
-              </button>
+              </Button>
             </div>
           </motion.div>
         </div>
