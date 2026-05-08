@@ -289,7 +289,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <div
       className={cn(
-        'bg-neutral-800 border-b border-neutral-700 grid grid-flow-col auto-cols-max grid-rows-3 xl:grid-rows-2 content-center items-center gap-x-2 gap-y-1 px-2 py-1.5 shrink-0 overflow-x-auto overflow-y-hidden no-scrollbar relative z-30',
+        'bg-neutral-800 border-b border-neutral-700 flex flex-wrap items-center content-center gap-x-2 gap-y-1 px-2 py-1.5 shrink-0 overflow-x-hidden overflow-y-hidden relative z-30',
+        'max-md:flex-nowrap max-md:overflow-x-auto max-md:no-scrollbar',
         compactUi && '[&_.tb-btn]:h-7 [&_.tb-btn]:w-7 [&_.tb-input]:h-6 [&_.tb-input]:py-0 [&_.tb-group]:gap-0.5'
       )}
     >
@@ -685,7 +686,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </Button>
       </div>
 
-      <div className="flex items-center justify-end gap-x-1 border-l border-neutral-700 pl-2 shrink-0 tb-group">
+      <div className="flex items-center gap-x-1 border-l border-neutral-700 pl-2 shrink-0 tb-group">
         <div className="flex items-center gap-0.5 shrink-0">
           <ToolbarButton 
             onClick={onCopy} 
