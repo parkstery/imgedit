@@ -2,6 +2,7 @@ import React, { useCallback, useLayoutEffect, useRef } from 'react';
 import { EditorState, Shape } from '../types';
 import { getActiveLayer, mapLayersReplaceActiveShapes } from '../lib/layers';
 import { CANVAS_TEXT_FONT_STACK } from '../lib/drawShapes';
+import { Button } from './ui/Button';
 
 interface TextDraftPanelProps {
   state: EditorState;
@@ -125,20 +126,20 @@ export const TextDraftPanel: React.FC<TextDraftPanelProps> = ({
         />
       </div>
       <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-center">
-        <button
-          type="button"
+        <Button
           onClick={commit}
-          className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+          variant="primary"
+          size="sm"
         >
           확인
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={cancel}
-          className="rounded border border-neutral-600 px-3 py-1.5 text-xs text-neutral-300 hover:bg-neutral-800"
+          variant="secondary"
+          size="sm"
         >
           취소
-        </button>
+        </Button>
         <span className="hidden lg:inline text-[10px] text-neutral-500 max-w-[200px]">
           Enter 줄바꿈 · Ctrl+Enter 확정 · Esc 취소
         </span>

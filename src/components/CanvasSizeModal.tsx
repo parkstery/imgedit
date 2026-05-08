@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Maximize2, Link, Link2Off } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Button } from './ui/Button';
 
 interface CanvasSizeModalProps {
   isOpen: boolean;
@@ -64,9 +65,9 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                 <Maximize2 size={20} className="text-emerald-400" />
                 캔버스 크기 (잘라내기/확장)
               </h2>
-              <button onClick={onClose} className="p-1 hover:bg-neutral-700 rounded-full transition-colors">
+              <Button onClick={onClose} variant="ghost" size="icon" className="h-8 w-8 rounded-full">
                 <X size={20} className="text-neutral-400" />
-              </button>
+              </Button>
             </div>
 
             <div className="p-6 space-y-6">
@@ -89,13 +90,15 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-neutral-100 focus:outline-none focus:border-emerald-500 transition-colors text-sm"
                   />
                 </div>
-                <button 
+                <Button
                   onClick={() => setLockAspectRatio(!lockAspectRatio)}
-                  className="absolute left-1/2 top-[34px] -translate-x-1/2 p-1 bg-neutral-800 border border-neutral-700 rounded-full text-neutral-400 hover:text-emerald-400 transition-colors"
+                  variant={lockAspectRatio ? 'primary' : 'secondary'}
+                  size="icon"
+                  className="absolute left-1/2 top-[34px] h-7 w-7 -translate-x-1/2 rounded-full p-0"
                   title="종횡비 고정"
                 >
                   {lockAspectRatio ? <Link size={14} /> : <Link2Off size={14} />}
-                </button>
+                </Button>
               </div>
 
               <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg">
@@ -107,18 +110,20 @@ export const CanvasSizeModal: React.FC<CanvasSizeModalProps> = ({
             </div>
 
             <div className="px-6 py-4 bg-neutral-900/50 border-t border-neutral-700 flex gap-3">
-              <button
+              <Button
                 onClick={onClose}
-                className="flex-1 px-4 py-2 rounded-lg border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors font-medium text-sm"
+                variant="secondary"
+                className="h-9 flex-1 rounded-lg text-sm"
               >
                 취소
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => onApply(width, height)}
-                className="flex-1 px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                variant="primary"
+                className="h-9 flex-1 rounded-lg text-sm"
               >
                 적용하기
-              </button>
+              </Button>
             </div>
           </motion.div>
         </div>

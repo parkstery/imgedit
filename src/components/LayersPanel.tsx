@@ -3,6 +3,7 @@ import { EditorLayer, EditorState } from '../types';
 import { cn } from '../lib/utils';
 import { cloneLayersDeep, createEditorLayer, getNextLayerName } from '../lib/layers';
 import { Eye, EyeOff, GripVertical, Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
+import { Button } from './ui/Button';
 
 /** 패널은 위=전경(역순). dragId를 targetId 앞/뒤에 넣은 뒤 layers(아래→위)로 환산 */
 function buildLayersAfterDrop(
@@ -142,26 +143,28 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState, onLay
       <div className="px-2 py-2 border-b border-neutral-800 flex items-center justify-between gap-1">
         <span className="text-xs font-semibold text-neutral-300">레이어</span>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
+          <Button
             onClick={addLayer}
             title="레이어 추가"
-            className="flex items-center justify-center rounded border border-neutral-700 bg-neutral-950 p-1 text-neutral-200 hover:bg-neutral-800"
+            variant="secondary"
+            size="icon"
+            className="h-6 w-6"
           >
             <Plus size={14} />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             disabled={state.layers.length <= 1}
             onClick={() => {
               const cur = state.layers.find(l => l.id === state.activeLayerId);
               if (cur) deleteLayer(cur.id);
             }}
             title="활성 레이어 삭제"
-            className="flex items-center justify-center rounded border border-neutral-700 bg-neutral-950 p-1 text-neutral-200 hover:bg-red-950/40 hover:border-red-800 disabled:opacity-30 disabled:hover:bg-neutral-950"
+            variant="danger"
+            size="icon"
+            className="h-6 w-6"
           >
             <Trash2 size={14} />
-          </button>
+          </Button>
         </div>
       </div>
       <div
@@ -225,22 +228,24 @@ export const LayersPanel: React.FC<LayersPanelProps> = ({ state, setState, onLay
             >
               <GripVertical size={14} aria-hidden />
             </span>
-            <button
-              type="button"
-              className="p-0.5 shrink-0 rounded text-neutral-400 hover:text-neutral-200"
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 rounded p-0 text-neutral-400 hover:text-neutral-200"
               title={layer.visible ? '숨기기' : '표시'}
               onClick={e => toggleVisible(layer.id, e)}
             >
               {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-            </button>
-            <button
-              type="button"
-              className="p-0.5 shrink-0 rounded text-neutral-400 hover:text-neutral-200"
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-5 w-5 rounded p-0 text-neutral-400 hover:text-neutral-200"
               title={layer.locked ? '잠금 해제' : '잠금'}
               onClick={e => toggleLocked(layer.id, e)}
             >
               {layer.locked ? <Lock size={13} /> : <LockOpen size={13} />}
-            </button>
+            </Button>
             {editingLayerId === layer.id ? (
               <input
                 autoFocus
