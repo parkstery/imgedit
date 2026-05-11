@@ -2272,7 +2272,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       ref={viewportRef}
       data-editor-canvas-viewport
       className={cn(
-        'flex-1 min-h-0 bg-neutral-900 overflow-auto relative transition-colors touch-none',
+        // scrollbar-gutter: 스크롤바 유무로 clientWidth/Height가 바뀌며 ResizeObserver·줌 레이아웃이 진동하는 것을 방지
+        'flex-1 min-h-0 bg-neutral-900 overflow-auto relative transition-colors touch-none [scrollbar-gutter:stable]',
         areaCaptureArmed
           ? 'cursor-crosshair'
           : state.tool === 'marquee' || state.tool === 'marqueeCircle'
