@@ -35,6 +35,7 @@ import {
   ImageMinus,
   Wand2,
   Images,
+  Sparkles,
 } from 'lucide-react';
 import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -185,6 +186,8 @@ interface ToolbarProps {
   onMagicWandEdgeLimitChange: (edgeLimit: number) => void;
   /** 활성 레이어 래스터에서 현재 색(톨러런스·알파 무시 옵션)과 일치하는 모든 픽셀을 투명 처리 */
   onReplaceCurrentColorTransparentOnLayer: () => void;
+  /** 가장자리 색 히스토그램으로 배경을 추정한 뒤 투명 처리 (톨러런스·알파 무시는 페인트통과 동일) */
+  onAutoRemoveDetectedBackgroundOnLayer: () => void;
   /** 여러 이미지 파일을 현재 색·톨러런스·알파 무시로 일괄 투명 처리 후 PNG ZIP 내려받기 */
   onBatchTransparentPngZip: () => void;
   onDeleteLastShape: () => void;
@@ -236,6 +239,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onFillIgnoreAlphaChange,
   onMagicWandEdgeLimitChange,
   onReplaceCurrentColorTransparentOnLayer,
+  onAutoRemoveDetectedBackgroundOnLayer,
   onBatchTransparentPngZip,
   onDeleteLastShape,
   onRedoLastShape,
@@ -319,6 +323,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onClick={onReplaceCurrentColorTransparentOnLayer}
           icon={<ImageMinus size={18} strokeWidth={1.75} />}
           label="활성 레이어 전체에서 현재 색을 투명으로 (톨러런스·알파 무시는 페인트통/배경투명 도구와 동일)"
+          disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+        />
+        <ToolbarButton
+          onClick={onAutoRemoveDetectedBackgroundOnLayer}
+          icon={<Sparkles size={18} strokeWidth={1.75} />}
+          label="배경 자동 감지·제거: 가장자리에서 지배 색을 추정해 투명 처리 후 툴바 색을 감지 색으로 맞춤"
           disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
         />
         <ToolbarButton

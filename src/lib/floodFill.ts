@@ -21,6 +21,15 @@ export function hexToRgba(hex: string): Rgba {
   return { r: 0, g: 0, b: 0, a: 255 };
 }
 
+/** RGB만 6자리 HEX (알파 무시). 툴바 색 동기화용 */
+export function rgbaToHexRgb(rgba: Rgba): string {
+  const c = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${c(rgba.r)}${c(rgba.g)}${c(rgba.b)}`;
+}
+
 export interface FloodFillOptions {
   /** true면 영역 판별·채울 필요 여부 판단에서 알파 채널을 비교하지 않음 */
   ignoreAlpha?: boolean;

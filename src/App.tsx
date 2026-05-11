@@ -33,7 +33,11 @@ import {
   mapLayersUpdateShapeById,
   totalShapeCount,
 } from './lib/layers';
-import { hexToRgba, replaceMatchingPixelsWithTransparent } from './lib/floodFill';
+import { hexToRgba, rgbaToHexRgb } from './lib/floodFill';
+import {
+  applyDetectedBorderColorKeyFromImage,
+  colorKeyTransparentDataUrlFromImage,
+} from './lib/autoBackgroundTransparent';
 import { getShapeRotationCenter } from './lib/drawShapes';
 import {
   readFillTolerance,
@@ -305,33 +309,13 @@ export default function App() {
     if (!documentHasRaster(s.layers)) return;
     const al = getActiveLayer(s.layers, s.activeLayerId);
     if (!al?.image || al.locked) return;
-    const img = al.image;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, img.width);
-    canvas.height = Math.max(1, img.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(img, 0, 0);
-    let imageData: ImageData;
-    try {
-      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    } catch (err) {
-      console.warn('현재 색 → 투명: 픽셀을 읽을 수 없습니다.', err);
-      return;
-    }
-    const target = hexToRgba(s.color);
-    const changed = replaceMatchingPixelsWithTransparent(imageData, target, s.fillTolerance, {
-      ignoreAlpha: s.fillIgnoreAlpha,
-    });
-    if (changed === 0) return;
-    ctx.putImageData(imageData, 0, 0);
-    let dataUrl: string;
-    try {
-      dataUrl = canvas.toDataURL();
-    } catch {
-      console.warn('현재 색 → 투명: 결과 이미지를 만들 수 없습니다.');
-      return;
-    }
+    const out = colorKeyTransparentDataUrlFromImage(
+      al.image,
+      hexToRgba(s.color),
+      s.fillTolerance,
+      s.fillIgnoreAlpha
+    );
+    if (!out) return;
     handlePrepareImageUndoForPaint('현재 색 → 투명 (레이어 전체)');
     const nextImg = new Image();
     nextImg.onload = () => {
@@ -355,7 +339,55 @@ export default function App() {
     nextImg.onerror = () => {
       console.warn('현재 색 → 투명: 결과 이미지를 불러오지 못했습니다.');
     };
-    nextImg.src = dataUrl;
+    nextImg.src = out.dataUrl;
+  }, [handlePrepareImageUndoForPaint]);
+
+  const handleAutoRemoveDetectedBackgroundOnLayer = useCallback(() => {
+    const s = stateRef.current;
+    if (!documentHasRaster(s.layers)) return;
+    const al = getActiveLayer(s.layers, s.activeLayerId);
+    if (!al?.image || al.locked) return;
+    const out = applyDetectedBorderColorKeyFromImage(al.image, s.fillTolerance, s.fillIgnoreAlpha);
+    if (out.ok === false) {
+      if (out.reason === 'no_border_sample') {
+        window.alert(
+          '가장자리에서 배경으로 쓸 만한 불투명 픽셀이 없습니다. 이미지 가장자리가 모두 투명인지 확인하세요.'
+        );
+      } else if (out.reason === 'no_matching_pixels') {
+        window.alert(
+          '감지된 배경색과 일치하는 픽셀이 없습니다. 톨러런스를 높이거나 「알파 무시」를 켜 보세요.'
+        );
+      } else {
+        window.alert('이미지를 읽거나 저장할 수 없습니다. 콘솔을 확인하세요.');
+      }
+      return;
+    }
+    handlePrepareImageUndoForPaint('배경 자동 제거 (가장자리)');
+    const nextHex = rgbaToHexRgb(out.detected);
+    const nextImg = new Image();
+    nextImg.onload = () => {
+      setState(prev => ({
+        ...prev,
+        color: nextHex,
+        layers: mapLayersReplaceActiveLayerImagePreservePlacement(
+          prev.layers,
+          prev.activeLayerId,
+          nextImg,
+          getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+        ),
+        activeShape: null,
+        selection: null,
+        selectionCircle: null,
+        selectionMask: null,
+        polylineDraft: null,
+        freehandDraft: null,
+        textDraft: null,
+      }));
+    };
+    nextImg.onerror = () => {
+      console.warn('배경 자동 제거: 결과 이미지를 불러오지 못했습니다.');
+    };
+    nextImg.src = out.dataUrl;
   }, [handlePrepareImageUndoForPaint]);
 
   const handleBatchTransparentPngZip = useCallback(() => {
@@ -1713,6 +1745,7 @@ export default function App() {
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
         onMagicWandEdgeLimitChange={handleMagicWandEdgeLimitChange}
         onReplaceCurrentColorTransparentOnLayer={handleReplaceCurrentColorTransparentOnLayer}
+        onAutoRemoveDetectedBackgroundOnLayer={handleAutoRemoveDetectedBackgroundOnLayer}
         onBatchTransparentPngZip={handleBatchTransparentPngZip}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}
