@@ -33,6 +33,8 @@ export type Tool =
   /** 원호: 세 점(시작, 끝, 호 위 중간) */
   | 'arc'
   | 'fill'
+  /** 클릭한 위치와 색이 이어진 영역을 투명으로(페인트통과 동일 합성·톨러런스 옵션 공유) */
+  | 'transparentFill'
   | 'eraser'
   | 'text';
 

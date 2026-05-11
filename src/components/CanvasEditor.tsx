@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import { EditorState, Point, Rect, Shape, EditorLayer } from '../types';
 import { cn } from '../lib/utils';
-import { floodFillImageData, hexToRgba } from '../lib/floodFill';
+import { floodFillImageData, hexToRgba, type Rgba } from '../lib/floodFill';
 import {
   applyStrokeStyle,
   fillTextShapeOnContext,
@@ -46,7 +46,7 @@ interface CanvasEditorProps {
   /** 레이어·도형이 (추가가 아닌) 변형/삭제될 때: 변경 전 스냅샷을 Undo 스택에 쌓음 */
   onLayersMutation?: (beforeLayers: EditorLayer[], beforeActiveLayerId: string, label?: string) => void;
   /** 페인트통 등 비트맵 변경 직전에 Undo용 스냅샷을 쌓을 때 호출 */
-  onPrepareImageUndo?: () => void;
+  onPrepareImageUndo?: (label?: string) => void;
   /** 맞춤 등에서 뷰 스크롤을 맨 위·왼쪽으로 맞출 때 증가 */
   scrollResetKey?: number;
   /** true면 첫 드래그로 문서 좌표 영역을 지정해 캡처(클립보드) */
@@ -1102,7 +1102,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     if (ix < 0 || iy < 0 || ix >= dw || iy >= dh) return;
 
-    onPrepareImageUndo?.();
+    onPrepareImageUndo?.('페인트통 채우기');
 
     const canvas = document.createElement('canvas');
     canvas.width = dw;
@@ -1160,6 +1160,73 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     nextImg.src = dataUrl;
   };
 
+  const handleTransparentFillClick = (e: React.MouseEvent) => {
+    if (state.tool !== 'transparentFill' || !documentHasRaster(state.layers)) return;
+    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
+    const imgPos = toImageCoords(getMousePos(e));
+    const ix = Math.floor(imgPos.x);
+    const iy = Math.floor(imgPos.y);
+    const shapes = flattenVisibleShapesInOrder(state.layers);
+
+    if (ix < 0 || iy < 0 || ix >= dw || iy >= dh) return;
+
+    onPrepareImageUndo?.('연결 영역 배경 투명');
+
+    const canvas = document.createElement('canvas');
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    drawVisibleLayerRastersToContext(ctx, state.layers, dw, dh);
+    strokeShapesOnContext(ctx, shapes);
+
+    let imageData: ImageData;
+    try {
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (err) {
+      console.warn('배경 투명: 픽셀을 읽을 수 없습니다.', err);
+      return;
+    }
+
+    const transparent: Rgba = { r: 0, g: 0, b: 0, a: 0 };
+    floodFillImageData(imageData, ix, iy, transparent, state.fillTolerance, {
+      ignoreAlpha: state.fillIgnoreAlpha,
+    });
+    ctx.putImageData(imageData, 0, 0);
+
+    let dataUrl: string;
+    try {
+      dataUrl = canvas.toDataURL();
+    } catch {
+      console.warn('배경 투명: 결과 이미지를 만들 수 없습니다.');
+      return;
+    }
+
+    const nextImg = new Image();
+    nextImg.onload = () => {
+      setState(prev => ({
+        ...prev,
+        layers: mapLayersFlattenRasterToActive(
+          prev.layers,
+          prev.activeLayerId,
+          nextImg,
+          getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+        ),
+        activeShape: null,
+        selection: null,
+        selectionCircle: null,
+        polylineDraft: null,
+        freehandDraft: null,
+        textDraft: null,
+      }));
+    };
+    nextImg.onerror = () => {
+      console.warn('배경 투명: 결과 이미지를 불러오지 못했습니다.');
+    };
+    nextImg.src = dataUrl;
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
 
@@ -1180,7 +1247,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         const al = getActiveLayer(state.layers, state.activeLayerId);
         if (!al?.image || al.locked) return;
         const imgPos = toImageCoords(pos);
-        onPrepareImageUndo?.();
+        onPrepareImageUndo?.('지우개');
         eraserStateRef.current = {
           layerId: al.id,
           lastDocPoint: imgPos,
@@ -1536,6 +1603,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'polyline' &&
         state.tool !== 'freehand' &&
         state.tool !== 'fill' &&
+        state.tool !== 'transparentFill' &&
         state.tool !== 'eraser' &&
         state.tool !== 'text' &&
         state.tool !== 'select' &&
@@ -2100,7 +2168,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ? 'cursor-crosshair'
           : state.tool === 'marquee' || state.tool === 'marqueeCircle'
             ? 'cursor-crosshair'
-          : state.tool === 'fill'
+          : state.tool === 'fill' || state.tool === 'transparentFill'
           ? 'cursor-paint-bucket'
           : state.tool === 'eraser'
           ? 'cursor-crosshair'
@@ -2153,6 +2221,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         handlePolylineClick(e);
         handleFreehandClick(e);
         handleFillClick(e);
+        handleTransparentFillClick(e);
       }}
       onWheel={handleWheel}
       onDragOver={handleDragOver}

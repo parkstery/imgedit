@@ -113,3 +113,44 @@ export function floodFillImageData(
 
   return filled;
 }
+
+/**
+ * 이미지 전체에서 `target` 색과 일치하는(허용 오차) 픽셀을 투명으로 바꿉니다.
+ * @returns 알파가 바뀐 픽셀 수
+ */
+export function replaceMatchingPixelsWithTransparent(
+  imageData: ImageData,
+  target: Rgba,
+  tolerance = 36,
+  options?: FloodFillOptions
+): number {
+  const ignoreAlpha = options?.ignoreAlpha ?? false;
+  const w = imageData.width;
+  const h = imageData.height;
+  const data = imageData.data;
+  let changed = 0;
+
+  const matches = (i: number) => {
+    const rgb =
+      Math.abs(data[i] - target.r) <= tolerance &&
+      Math.abs(data[i + 1] - target.g) <= tolerance &&
+      Math.abs(data[i + 2] - target.b) <= tolerance;
+    if (ignoreAlpha) return rgb;
+    return rgb && Math.abs(data[i + 3] - target.a) <= tolerance;
+  };
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (!matches(i)) continue;
+      if (data[i + 3] === 0) continue;
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 0;
+      changed++;
+    }
+  }
+
+  return changed;
+}

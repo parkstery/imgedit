@@ -31,11 +31,13 @@ import {
   RotateCw,
   ArrowLeft,
   ArrowRight,
+  ImageOff,
+  ImageMinus,
 } from 'lucide-react';
 import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
 import { AdvancedColorWindow } from './AdvancedColorWindow';
-import { documentHasRaster, totalShapeCount } from '../lib/layers';
+import { documentHasRaster, getActiveLayer, totalShapeCount } from '../lib/layers';
 import { Button } from './ui/Button';
 import { formStyles } from './ui/formStyles';
 
@@ -178,6 +180,8 @@ interface ToolbarProps {
   onTextStyleChange: (next: Partial<Pick<EditorState, 'textBold' | 'textItalic' | 'textUnderline'>>) => void;
   onFillToleranceChange: (tolerance: number) => void;
   onFillIgnoreAlphaChange: (ignoreAlpha: boolean) => void;
+  /** 활성 레이어 래스터에서 현재 색(톨러런스·알파 무시 옵션)과 일치하는 모든 픽셀을 투명 처리 */
+  onReplaceCurrentColorTransparentOnLayer: () => void;
   onDeleteLastShape: () => void;
   onRedoLastShape: () => void;
   canUndoLast: boolean;
@@ -225,6 +229,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onTextStyleChange,
   onFillToleranceChange,
   onFillIgnoreAlphaChange,
+  onReplaceCurrentColorTransparentOnLayer,
   onDeleteLastShape,
   onRedoLastShape,
   canUndoLast,
@@ -245,6 +250,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCaptureFullDocument,
   areaCaptureArmed,
 }) => {
+  const activeLayer = getActiveLayer(state.layers, state.activeLayerId);
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
   const advancedColorAnchorRef = useRef<HTMLButtonElement>(null);
   const [rotationDraft, setRotationDraft] = useState('');
@@ -302,6 +308,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton onClick={onSaveAs} icon={<Download size={18} />} label="다른 이름으로 저장" disabled={!documentHasRaster(state.layers)} />
         <ToolbarButton onClick={onResize} icon={<Scale size={18} />} label="이미지 크기 조절" disabled={!documentHasRaster(state.layers)} />
         <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!documentHasRaster(state.layers)} />
+        <ToolbarButton
+          onClick={onReplaceCurrentColorTransparentOnLayer}
+          icon={<ImageMinus size={18} strokeWidth={1.75} />}
+          label="활성 레이어 전체에서 현재 색을 투명으로 (톨러런스·알파 무시는 페인트통/배경투명 도구와 동일)"
+          disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+        />
         <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
         <ToolbarButton
           onClick={() => void onCaptureSelection()}
@@ -408,6 +420,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           active={state.tool === 'fill'}
         />
         <ToolbarButton
+          onClick={() => onToolChange('transparentFill')}
+          icon={<ImageOff size={18} strokeWidth={1.75} />}
+          label="배경 투명: 클릭한 색과 이어진 영역을 투명 처리 (합성 후 활성 레이어로 평탄화)"
+          active={state.tool === 'transparentFill'}
+        />
+        <ToolbarButton
           onClick={() => onToolChange('eraser')}
           icon={<Eraser size={18} />}
           label="지우개"
@@ -464,11 +482,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </Button>
           </div>
         )}
-        {state.tool === 'fill' && (
+        {(state.tool === 'fill' || state.tool === 'transparentFill') && (
           <div
             className="flex items-center gap-2 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
             role="group"
-            aria-label="페인트통 옵션"
+            aria-label={state.tool === 'fill' ? '페인트통 옵션' : '배경 투명 옵션'}
           >
             <div className="flex items-center gap-1.5">
               <span id="fill-tolerance-label" className="text-[10px] text-neutral-400 whitespace-nowrap">
@@ -482,7 +500,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 value={state.fillTolerance}
                 onChange={(e) => onFillToleranceChange(parseInt(e.target.value, 10))}
                 className={cn('w-20 bg-neutral-700', formStyles.sliderBase)}
-                title="페인트통 색 일치 허용 오차 (높을수록 넓게 채움)"
+                title="색 일치 허용 오차 (페인트통·연결 영역 투명·레이어 전역 투명에 공통)"
                 aria-labelledby="fill-tolerance-label"
                 aria-valuemin={0}
                 aria-valuemax={100}

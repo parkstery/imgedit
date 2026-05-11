@@ -240,6 +240,18 @@ export function mapLayersReplaceActiveLayerRaster(
   );
 }
 
+/** 활성 레이어의 래스터 비트맵만 교체합니다. imageX·Y·회전·도형은 유지합니다. */
+export function mapLayersReplaceActiveLayerImagePreservePlacement(
+  layers: readonly EditorLayer[],
+  activeLayerId: string,
+  image: HTMLImageElement,
+  fileName: string | null,
+): EditorLayer[] {
+  return layers.map(l =>
+    l.id === activeLayerId ? { ...l, image, fileName: fileName ?? l.fileName } : l
+  );
+}
+
 /** 도형 id가 속한 레이어 id (없으면 undefined) */
 export function findLayerIdForShapeId(
   layers: readonly EditorLayer[],

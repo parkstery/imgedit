@@ -18,11 +18,13 @@ import {
   findShapeInLayers,
   getActiveLayer,
   getDocumentCanvasSize,
+  mapLayersReplaceActiveLayerImagePreservePlacement,
   mapLayersReplaceActiveLayerRaster,
   mapLayersReplaceActiveShapes,
   mapLayersUpdateShapeById,
   totalShapeCount,
 } from './lib/layers';
+import { hexToRgba, replaceMatchingPixelsWithTransparent } from './lib/floodFill';
 import { getShapeRotationCenter } from './lib/drawShapes';
 import {
   readFillTolerance,
@@ -273,10 +275,67 @@ export default function App() {
     };
   }, []);
 
-  const handlePrepareImageUndoForPaint = useCallback(() => {
+  const handlePrepareImageUndoForPaint = useCallback((label = '이미지 편집') => {
     const snap = buildStateSnapshot(stateRef.current);
-    if (snap) appendUndoEntry({ type: 'image', snapshot: snap, label: '페인트통 채우기' });
+    if (snap) appendUndoEntry({ type: 'image', snapshot: snap, label });
   }, [buildStateSnapshot, appendUndoEntry]);
+
+  const handleReplaceCurrentColorTransparentOnLayer = useCallback(() => {
+    const s = stateRef.current;
+    if (!documentHasRaster(s.layers)) return;
+    const al = getActiveLayer(s.layers, s.activeLayerId);
+    if (!al?.image || al.locked) return;
+    const img = al.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, img.width);
+    canvas.height = Math.max(1, img.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0);
+    let imageData: ImageData;
+    try {
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (err) {
+      console.warn('현재 색 → 투명: 픽셀을 읽을 수 없습니다.', err);
+      return;
+    }
+    const target = hexToRgba(s.color);
+    const changed = replaceMatchingPixelsWithTransparent(imageData, target, s.fillTolerance, {
+      ignoreAlpha: s.fillIgnoreAlpha,
+    });
+    if (changed === 0) return;
+    ctx.putImageData(imageData, 0, 0);
+    let dataUrl: string;
+    try {
+      dataUrl = canvas.toDataURL();
+    } catch {
+      console.warn('현재 색 → 투명: 결과 이미지를 만들 수 없습니다.');
+      return;
+    }
+    handlePrepareImageUndoForPaint('현재 색 → 투명 (레이어 전체)');
+    const nextImg = new Image();
+    nextImg.onload = () => {
+      setState(prev => ({
+        ...prev,
+        layers: mapLayersReplaceActiveLayerImagePreservePlacement(
+          prev.layers,
+          prev.activeLayerId,
+          nextImg,
+          getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+        ),
+        activeShape: null,
+        selection: null,
+        selectionCircle: null,
+        polylineDraft: null,
+        freehandDraft: null,
+        textDraft: null,
+      }));
+    };
+    nextImg.onerror = () => {
+      console.warn('현재 색 → 투명: 결과 이미지를 불러오지 못했습니다.');
+    };
+    nextImg.src = dataUrl;
+  }, [handlePrepareImageUndoForPaint]);
 
   const handleLayersMutation = useCallback((beforeLayers: EditorLayer[], beforeActiveLayerId: string, label?: string) => {
     appendUndoEntry({
@@ -1535,6 +1594,7 @@ export default function App() {
         onTextStyleChange={handleTextStyleChange}
         onFillToleranceChange={handleFillToleranceChange}
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
+        onReplaceCurrentColorTransparentOnLayer={handleReplaceCurrentColorTransparentOnLayer}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}
         canUndoLast={undoStack.length > 0 || totalShapeCount(state.layers) > 0}
