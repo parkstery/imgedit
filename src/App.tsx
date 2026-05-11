@@ -7,7 +7,16 @@ import { LayersPanel } from './components/LayersPanel';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
-import { EditorState, Rect, Point, ImageUndoSnapshot, UndoEntry, Shape, EditorLayer } from './types';
+import {
+  EditorState,
+  Rect,
+  Point,
+  ImageUndoSnapshot,
+  UndoEntry,
+  Shape,
+  EditorLayer,
+  SelectionBitmapMask,
+} from './types';
 import {
   bakeRasterLayerVisualToAxisAligned,
   cloneLayersDeep,
@@ -39,6 +48,11 @@ import {
   cropCompositeToCircle,
   writeCanvasToClipboardPng,
 } from './lib/documentCapture';
+import {
+  applySelectionMaskToCroppedCanvas,
+  cloneSelectionBitmapMask,
+  selectionMaskMatchesRect,
+} from './lib/magicWand';
 import { computeFitZoomPosition, getEditorCanvasViewportSize } from './lib/viewportFit';
 
 const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
@@ -46,6 +60,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   position: { x: 0, y: 0 },
   selection: null,
   selectionCircle: null,
+  selectionMask: null,
   isSelecting: false,
   isPanning: false,
   tool: 'select',
@@ -60,6 +75,7 @@ const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
   textUnderline: false,
   fillTolerance: 40,
   fillIgnoreAlpha: false,
+  magicWandEdgeLimit: 58,
   activeShape: null,
   selectedShapeIds: [],
   selectedRasterLayerId: null,
@@ -139,7 +155,7 @@ function newId(): string {
 type InternalClipboardPayload =
   | { kind: 'shapes'; entries: { layerId: string; shape: Shape }[] }
   | { kind: 'raster'; image: HTMLImageElement; x: number; y: number; fileName: string | null }
-  | { kind: 'selection'; rect: Rect };
+  | { kind: 'selection'; rect: Rect; mask: SelectionBitmapMask | null };
 
 async function cloneImageElement(src: HTMLImageElement): Promise<HTMLImageElement | null> {
   const c = document.createElement('canvas');
@@ -215,6 +231,7 @@ export default function App() {
           ...loadFillToolPrefsFromStorage(),
           fillTolerance: prev.fillTolerance,
           fillIgnoreAlpha: prev.fillIgnoreAlpha,
+          magicWandEdgeLimit: prev.magicWandEdgeLimit,
           textFontSize: prev.textFontSize,
           layers: [{ ...L0, image: img, fileName: 'new-image.png' }],
         };
@@ -257,6 +274,7 @@ export default function App() {
       activeLayerId: snap.activeLayerId,
       selection: snap.selection ? { ...snap.selection } : null,
       selectionCircle: snap.selectionCircle ? { ...snap.selectionCircle } : null,
+      selectionMask: cloneSelectionBitmapMask(snap.selectionMask ?? null),
       zoom: snap.zoom,
       position: { ...snap.position },
       selectedRasterLayerId: null,
@@ -270,6 +288,7 @@ export default function App() {
       activeLayerId: source.activeLayerId,
       selection: source.selection ? { ...source.selection } : null,
       selectionCircle: source.selectionCircle ? { ...source.selectionCircle } : null,
+      selectionMask: cloneSelectionBitmapMask(source.selectionMask),
       zoom: source.zoom,
       position: { ...source.position },
     };
@@ -326,6 +345,7 @@ export default function App() {
         activeShape: null,
         selection: null,
         selectionCircle: null,
+        selectionMask: null,
         polylineDraft: null,
         freehandDraft: null,
         textDraft: null,
@@ -365,6 +385,7 @@ export default function App() {
           ),
           selection: null,
           selectionCircle: null,
+          selectionMask: null,
           selectedShapeIds: [],
           selectedRasterLayerId: null,
         }));
@@ -407,6 +428,7 @@ export default function App() {
           ...base,
           fillTolerance: prev.fillTolerance,
           fillIgnoreAlpha: prev.fillIgnoreAlpha,
+          magicWandEdgeLimit: prev.magicWandEdgeLimit,
           textFontSize: prev.textFontSize,
           layers: [{ ...L0, image: img, fileName: 'new-image.png' }],
         };
@@ -469,12 +491,15 @@ export default function App() {
             }
           : null;
       const keepMarqueeUi =
-        tool === 'select' || tool === 'marquee' || tool === 'marqueeCircle';
+        tool === 'select' || tool === 'marquee' || tool === 'marqueeCircle' || tool === 'magicWand';
       return {
         ...prev,
         tool,
-        selection: tool === 'select' || tool === 'marquee' ? prev.selection : null,
+        selection:
+          tool === 'select' || tool === 'marquee' || tool === 'magicWand' ? prev.selection : null,
         selectionCircle: tool === 'select' || tool === 'marqueeCircle' ? prev.selectionCircle : null,
+        selectionMask:
+          tool === 'select' || tool === 'marquee' || tool === 'magicWand' ? prev.selectionMask : null,
         isSelecting: false,
         selectedShapeIds: keepMarqueeUi ? prev.selectedShapeIds : [],
         selectedRasterLayerId: keepMarqueeUi ? prev.selectedRasterLayerId : null,
@@ -524,6 +549,10 @@ export default function App() {
   const handleFillIgnoreAlphaChange = (fillIgnoreAlpha: boolean) => {
     writeFillIgnoreAlpha(fillIgnoreAlpha);
     setState(prev => ({ ...prev, fillIgnoreAlpha }));
+  };
+  const handleMagicWandEdgeLimitChange = (magicWandEdgeLimit: number) => {
+    const next = Math.max(0, Math.min(100, Math.round(magicWandEdgeLimit)));
+    setState(prev => ({ ...prev, magicWandEdgeLimit: next }));
   };
 
   const transformSelectedRaster = useCallback((opts: { scale?: number; rotateDeg?: number }) => {
@@ -885,6 +914,7 @@ export default function App() {
         layers: nextLayers,
         selection: null,
         selectionCircle: null,
+        selectionMask: null,
         selectedRasterLayerId: null,
       }));
       setIsResizeModalOpen(false);
@@ -980,6 +1010,7 @@ export default function App() {
         layers: nextLayers,
         selection: null,
         selectionCircle: null,
+        selectionMask: null,
         selectedRasterLayerId: null,
       }));
       setIsCanvasSizeModalOpen(false);
@@ -1000,10 +1031,18 @@ export default function App() {
       return cropCompositeToCircle(full, state.selectionCircle);
     }
     if (state.selection && state.selection.width >= 1 && state.selection.height >= 1) {
-      return cropCanvasToRegion(full, state.selection);
+      const cropped = cropCanvasToRegion(full, state.selection);
+      if (
+        cropped &&
+        state.selectionMask &&
+        selectionMaskMatchesRect(state.selectionMask, state.selection)
+      ) {
+        applySelectionMaskToCroppedCanvas(cropped, state.selectionMask);
+      }
+      return cropped;
     }
     return null;
-  }, [state.layers, state.selection, state.selectionCircle]);
+  }, [state.layers, state.selection, state.selectionCircle, state.selectionMask]);
 
   const copyCanvasToSystemClipboard = useCallback(async (canvas: HTMLCanvasElement) => {
     return new Promise<void>((resolve, reject) => {
@@ -1077,7 +1116,14 @@ export default function App() {
       state.selection ??
       (state.selectionCircle ? boundingRectOfSelectionCircle(state.selectionCircle) : null);
     if (!rectPayload) return;
-    internalClipboardRef.current = { kind: 'selection', rect: { ...rectPayload } };
+    internalClipboardRef.current = {
+      kind: 'selection',
+      rect: { ...rectPayload },
+      mask:
+        state.selectionMask && selectionMaskMatchesRect(state.selectionMask, rectPayload)
+          ? cloneSelectionBitmapMask(state.selectionMask)
+          : null,
+    };
     try {
       await copyCanvasToSystemClipboard(canvas);
     } catch (err) {
@@ -1098,7 +1144,7 @@ export default function App() {
     } catch (err) {
       console.error('선택 영역 캡처 실패:', err);
     }
-  }, [state.selection, state.selectionCircle, state.layers, getSelectionOrCircleCanvas]);
+  }, [state.selection, state.selectionCircle, state.selectionMask, state.layers, getSelectionOrCircleCanvas]);
 
   const handleCaptureFullDocument = useCallback(async () => {
     if (!documentHasRaster(state.layers)) return;
@@ -1148,7 +1194,29 @@ export default function App() {
         drawRasterImageOnContext(ctx, activeLayer);
       }
       if (state.selection) {
-        ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+        if (
+          state.selectionMask &&
+          selectionMaskMatchesRect(state.selectionMask, state.selection)
+        ) {
+          const id = ctx.getImageData(
+            state.selection.x,
+            state.selection.y,
+            state.selection.width,
+            state.selection.height
+          );
+          const m = state.selectionMask.data;
+          for (let i = 0; i < m.length; i++) {
+            if (!m[i]) continue;
+            const o = i * 4;
+            id.data[o] = 0;
+            id.data[o + 1] = 0;
+            id.data[o + 2] = 0;
+            id.data[o + 3] = 0;
+          }
+          ctx.putImageData(id, state.selection.x, state.selection.y);
+        } else {
+          ctx.clearRect(state.selection.x, state.selection.y, state.selection.width, state.selection.height);
+        }
       } else if (state.selectionCircle) {
         const { cx, cy, r } = state.selectionCircle;
         ctx.save();
@@ -1171,6 +1239,7 @@ export default function App() {
           ),
           selection: null,
           selectionCircle: null,
+          selectionMask: null,
           selectedRasterLayerId: null,
         }));
       };
@@ -1178,7 +1247,7 @@ export default function App() {
     } catch (err) {
       console.error('Cut failed:', err);
     }
-  }, [state.selection, state.selectionCircle, state.layers, handleCopy]);
+  }, [state.selection, state.selectionCircle, state.selectionMask, state.layers, handleCopy]);
 
   const pasteFromInternalClipboard = useCallback(async (): Promise<boolean> => {
     const payload = internalClipboardRef.current;
@@ -1213,6 +1282,7 @@ export default function App() {
         selectedRasterLayerId: null,
         selection: null,
         selectionCircle: null,
+        selectionMask: null,
       }));
       handleLayersMutation(before, s.activeLayerId, '도형 붙여넣기');
       return true;
@@ -1270,6 +1340,7 @@ export default function App() {
           selectedRasterLayerId: prev.activeLayerId,
           selection: null,
           selectionCircle: null,
+          selectionMask: null,
         }));
       };
       merged.src = canvas.toDataURL();
@@ -1282,6 +1353,7 @@ export default function App() {
         ...prev,
         selection: { ...payload.rect },
         selectionCircle: null,
+        selectionMask: cloneSelectionBitmapMask(payload.mask),
         tool: 'marquee',
       }));
       return false;
@@ -1297,6 +1369,7 @@ export default function App() {
       activeLayerId: s.activeLayerId,
       selection: s.selection ? { ...s.selection } : null,
       selectionCircle: s.selectionCircle ? { ...s.selectionCircle } : null,
+      selectionMask: cloneSelectionBitmapMask(s.selectionMask),
       zoom: s.zoom,
       position: { ...s.position },
     });
@@ -1316,6 +1389,7 @@ export default function App() {
           activeLayerId: L0.id,
           selection: null,
           selectionCircle: null,
+          selectionMask: null,
           selectedShapeIds: [],
           selectedRasterLayerId: L0.id,
         };
@@ -1388,6 +1462,7 @@ export default function App() {
           selectionCircle: null,
           selectedShapeIds: [],
           selectedRasterLayerId: prev.activeLayerId,
+          selectionMask: null,
         }));
       };
       mergedImg.src = mergedDataUrl;
@@ -1594,6 +1669,7 @@ export default function App() {
         onTextStyleChange={handleTextStyleChange}
         onFillToleranceChange={handleFillToleranceChange}
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
+        onMagicWandEdgeLimitChange={handleMagicWandEdgeLimitChange}
         onReplaceCurrentColorTransparentOnLayer={handleReplaceCurrentColorTransparentOnLayer}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}

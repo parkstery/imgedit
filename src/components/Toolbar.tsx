@@ -33,6 +33,7 @@ import {
   ArrowRight,
   ImageOff,
   ImageMinus,
+  Wand2,
 } from 'lucide-react';
 import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -180,6 +181,7 @@ interface ToolbarProps {
   onTextStyleChange: (next: Partial<Pick<EditorState, 'textBold' | 'textItalic' | 'textUnderline'>>) => void;
   onFillToleranceChange: (tolerance: number) => void;
   onFillIgnoreAlphaChange: (ignoreAlpha: boolean) => void;
+  onMagicWandEdgeLimitChange: (edgeLimit: number) => void;
   /** 활성 레이어 래스터에서 현재 색(톨러런스·알파 무시 옵션)과 일치하는 모든 픽셀을 투명 처리 */
   onReplaceCurrentColorTransparentOnLayer: () => void;
   onDeleteLastShape: () => void;
@@ -229,6 +231,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onTextStyleChange,
   onFillToleranceChange,
   onFillIgnoreAlphaChange,
+  onMagicWandEdgeLimitChange,
   onReplaceCurrentColorTransparentOnLayer,
   onDeleteLastShape,
   onRedoLastShape,
@@ -359,6 +362,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="영역 선택 (점선 원): 첫·둘째 클릭이 지름의 양끝(거리=지름)"
           active={state.tool === 'marqueeCircle'}
         />
+        <ToolbarButton
+          onClick={() => onToolChange('magicWand')}
+          icon={<Wand2 size={18} strokeWidth={1.75} />}
+          label="마법 선택: 색 연결 + 에지(Sobel)로 경계에서 멈춤. 문서 클릭으로 영역 지정"
+          active={state.tool === 'magicWand'}
+        />
         <ToolbarButton 
           onClick={() => onToolChange('freehand')} 
           icon={<Pencil size={18} />} 
@@ -482,11 +491,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </Button>
           </div>
         )}
-        {(state.tool === 'fill' || state.tool === 'transparentFill') && (
+        {(state.tool === 'fill' || state.tool === 'transparentFill' || state.tool === 'magicWand') && (
           <div
             className="flex items-center gap-2 ml-0.5 px-2 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
             role="group"
-            aria-label={state.tool === 'fill' ? '페인트통 옵션' : '배경 투명 옵션'}
+            aria-label={
+              state.tool === 'fill'
+                ? '페인트통 옵션'
+                : state.tool === 'transparentFill'
+                  ? '배경 투명 옵션'
+                  : '마법 선택 옵션'
+            }
           >
             <div className="flex items-center gap-1.5">
               <span id="fill-tolerance-label" className="text-[10px] text-neutral-400 whitespace-nowrap">
@@ -500,7 +515,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 value={state.fillTolerance}
                 onChange={(e) => onFillToleranceChange(parseInt(e.target.value, 10))}
                 className={cn('w-20 bg-neutral-700', formStyles.sliderBase)}
-                title="색 일치 허용 오차 (페인트통·연결 영역 투명·레이어 전역 투명에 공통)"
+                title="색 일치 허용 오차 (페인트통·연결 영역 투명·레이어 전역 투명·마법 선택에 공통)"
                 aria-labelledby="fill-tolerance-label"
                 aria-valuemin={0}
                 aria-valuemax={100}
@@ -511,6 +526,28 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 {state.fillTolerance}
               </span>
             </div>
+            {state.tool === 'magicWand' && (
+              <div className="flex items-center gap-1.5 border-l border-neutral-600 pl-2">
+                <span id="magic-edge-label" className="text-[10px] text-neutral-400 whitespace-nowrap">
+                  에지
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={state.magicWandEdgeLimit}
+                  onChange={(e) => onMagicWandEdgeLimitChange(parseInt(e.target.value, 10))}
+                  className={cn('w-20 bg-neutral-700', formStyles.sliderBase)}
+                  title="높을수록 약한 경계에서도 확장을 멈춤 (Sobel 에지 강도 기준)"
+                  aria-labelledby="magic-edge-label"
+                  aria-valuenow={state.magicWandEdgeLimit}
+                />
+                <span className="text-[10px] text-neutral-400 w-6 tabular-nums text-right" aria-hidden>
+                  {state.magicWandEdgeLimit}
+                </span>
+              </div>
+            )}
             <label
               className="flex items-center gap-1 cursor-pointer select-none shrink-0"
               title="켜면 채우기 영역 판별 시 RGB만 비교합니다. 반투명·안티앨리어싱 경계에 유리합니다."

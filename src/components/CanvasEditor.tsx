@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react';
-import { EditorState, Point, Rect, Shape, EditorLayer } from '../types';
+import { EditorState, Point, Rect, Shape, EditorLayer, SelectionBitmapMask } from '../types';
 import { cn } from '../lib/utils';
 import { floodFillImageData, hexToRgba, type Rgba } from '../lib/floodFill';
 import {
@@ -36,6 +36,11 @@ import {
   mapLayersUpdateShapeById,
   pickTopInteractiveTarget,
 } from '../lib/layers';
+import {
+  cloneSelectionBitmapMask,
+  magicWandRegionMask,
+  selectionMaskMatchesRect,
+} from '../lib/magicWand';
 
 interface CanvasEditorProps {
   state: EditorState;
@@ -173,6 +178,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     startImagePoint: Point;
     startRect: Rect | null;
     startCircle: { cx: number; cy: number; r: number } | null;
+    /** 사각 선택 이동 시 마스크 bbox 동기화용 */
+    startMask: SelectionBitmapMask | null;
   } | null>(null);
   /** 원형 영역: 1·2클릭이 지름의 양끝(임의 방향), 거리=지름 */
   const marqueeCircleAnchorRef = useRef<Point | null>(null);
@@ -437,9 +444,15 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
       if (isEditableTarget(e.target)) return;
 
-      if (state.tool === 'marquee' || state.tool === 'marqueeCircle') {
+      if (state.tool === 'marquee' || state.tool === 'marqueeCircle' || state.tool === 'magicWand') {
         if (e.key === 'Escape') {
-          if (state.selection || state.selectionCircle || state.isSelecting || marqueeCircleAnchorRef.current) {
+          if (
+            state.selection ||
+            state.selectionCircle ||
+            state.selectionMask ||
+            state.isSelecting ||
+            marqueeCircleAnchorRef.current
+          ) {
             e.preventDefault();
             marqueeCircleAnchorRef.current = null;
             marqueeCirclePreviewRef.current = null;
@@ -447,6 +460,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               ...prev,
               selection: null,
               selectionCircle: null,
+              selectionMask: null,
               isSelecting: false,
             }));
             drawRef.current();
@@ -716,6 +730,22 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.selection.height
       );
       ctx.setLineDash([]);
+      if (
+        state.selectionMask &&
+        selectionMaskMatchesRect(state.selectionMask, state.selection)
+      ) {
+        const m = state.selectionMask;
+        const id = ctx.createImageData(m.width, m.height);
+        for (let i = 0; i < m.width * m.height; i++) {
+          if (!m.data[i]) continue;
+          const o = i * 4;
+          id.data[o] = 59;
+          id.data[o + 1] = 130;
+          id.data[o + 2] = 246;
+          id.data[o + 3] = 72;
+        }
+        ctx.putImageData(id, m.x, m.y);
+      }
     }
     if (state.selectionCircle && state.selectionCircle.r > 0) {
       const sc = state.selectionCircle;
@@ -1149,6 +1179,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         activeShape: null,
         selection: null,
         selectionCircle: null,
+        selectionMask: null,
         polylineDraft: null,
         freehandDraft: null,
         textDraft: null,
@@ -1216,6 +1247,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         activeShape: null,
         selection: null,
         selectionCircle: null,
+        selectionMask: null,
         polylineDraft: null,
         freehandDraft: null,
         textDraft: null,
@@ -1225,6 +1257,57 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       console.warn('배경 투명: 결과 이미지를 불러오지 못했습니다.');
     };
     nextImg.src = dataUrl;
+  };
+
+  const handleMagicWandClick = (e: React.MouseEvent) => {
+    if (state.tool !== 'magicWand' || !documentHasRaster(state.layers)) return;
+    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
+    const imgPos = toImageCoords(getMousePos(e));
+    const ix = Math.floor(imgPos.x);
+    const iy = Math.floor(imgPos.y);
+    const shapes = flattenVisibleShapesInOrder(state.layers);
+
+    if (ix < 0 || iy < 0 || ix >= dw || iy >= dh) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    drawVisibleLayerRastersToContext(ctx, state.layers, dw, dh);
+    strokeShapesOnContext(ctx, shapes);
+
+    let imageData: ImageData;
+    try {
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (err) {
+      console.warn('마법 선택: 픽셀을 읽을 수 없습니다.', err);
+      return;
+    }
+
+    const region = magicWandRegionMask(imageData, ix, iy, state.fillTolerance, {
+      ignoreAlpha: state.fillIgnoreAlpha,
+      edgeLimit: state.magicWandEdgeLimit,
+    });
+    if (!region) return;
+
+    const { rect, mask } = region;
+    setState(prev => ({
+      ...prev,
+      selection: rect,
+      selectionCircle: null,
+      selectionMask: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        data: new Uint8Array(mask),
+      },
+      selectedShapeIds: [],
+      selectedRasterLayerId: null,
+      isSelecting: false,
+    }));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1287,6 +1370,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 isSelecting: false,
                 selection: null,
                 selectionCircle: null,
+                selectionMask: null,
               }));
               return;
             }
@@ -1330,6 +1414,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                       isSelecting: false,
                       selection: null,
                       selectionCircle: null,
+                      selectionMask: null,
                     }));
                     return;
                   }
@@ -1357,6 +1442,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                   isSelecting: false,
                   selection: null,
                   selectionCircle: null,
+                  selectionMask: null,
                 }));
                 return;
               }
@@ -1391,6 +1477,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             selectedRasterLayerId: null,
             selection: null,
             selectionCircle: null,
+            selectionMask: null,
             isSelecting: false,
           }));
         } else if (target?.kind === 'raster') {
@@ -1411,6 +1498,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               selectedShapeIds: [],
               selection: null,
               selectionCircle: null,
+              selectionMask: null,
               isSelecting: false,
             }));
           }
@@ -1422,6 +1510,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             isSelecting: false,
             selection: null,
             selectionCircle: null,
+            selectionMask: null,
           }));
         }
       } else if (state.tool === 'marquee' && documentHasRaster(state.layers)) {
@@ -1439,6 +1528,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             startImagePoint: imgPos,
             startRect: { ...s },
             startCircle: null,
+            startMask:
+              state.selectionMask && selectionMaskMatchesRect(state.selectionMask, s)
+                ? cloneSelectionBitmapMask(state.selectionMask)
+                : null,
           };
           setState(prev => ({
             ...prev,
@@ -1453,6 +1546,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           isSelecting: true,
           selection: null,
           selectionCircle: null,
+          selectionMask: null,
           selectedShapeIds: [],
           selectedRasterLayerId: null,
         }));
@@ -1469,6 +1563,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             startImagePoint: imgPosCircle,
             startRect: null,
             startCircle: { ...sc0 },
+            startMask: null,
           };
           setState(prev => ({
             ...prev,
@@ -1485,6 +1580,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ...prev,
             selection: null,
             selectionCircle: null,
+            selectionMask: null,
             selectedShapeIds: [],
             selectedRasterLayerId: null,
           }));
@@ -1504,6 +1600,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
               ...prev,
               selection: null,
               selectionCircle: { cx, cy, r },
+              selectionMask: null,
               selectedShapeIds: [],
               selectedRasterLayerId: null,
             }));
@@ -1511,6 +1608,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             setState(prev => ({
               ...prev,
               selectionCircle: null,
+              selectionMask: null,
               selectedShapeIds: [],
               selectedRasterLayerId: null,
             }));
@@ -1604,6 +1702,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         state.tool !== 'freehand' &&
         state.tool !== 'fill' &&
         state.tool !== 'transparentFill' &&
+        state.tool !== 'magicWand' &&
         state.tool !== 'eraser' &&
         state.tool !== 'text' &&
         state.tool !== 'select' &&
@@ -1811,11 +1910,21 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
                 height: st.startRect.height,
               },
               selectionCircle: null,
+              ...(st.startMask
+                ? {
+                    selectionMask: {
+                      ...st.startMask,
+                      x: st.startRect.x + dx,
+                      y: st.startRect.y + dy,
+                    },
+                  }
+                : {}),
             }
           : {}),
         ...(st.kind === 'circle' && st.startCircle
           ? {
               selection: null,
+              selectionMask: null,
               selectionCircle: {
                 cx: st.startCircle.cx + dx,
                 cy: st.startCircle.cy + dy,
@@ -1933,7 +2042,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           width: Math.abs(current.x - start.x),
           height: Math.abs(current.y - start.y),
         };
-        setState(prev => ({ ...prev, selection: rect, selectionCircle: null }));
+        setState(prev => ({ ...prev, selection: rect, selectionCircle: null, selectionMask: null }));
       }
     } else if (state.activeShape) {
       const current = toImageCoords(pos);
@@ -2170,6 +2279,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
             ? 'cursor-crosshair'
           : state.tool === 'fill' || state.tool === 'transparentFill'
           ? 'cursor-paint-bucket'
+          : state.tool === 'magicWand'
+            ? 'cursor-crosshair'
           : state.tool === 'eraser'
           ? 'cursor-crosshair'
           : state.tool === 'text'
@@ -2222,6 +2333,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         handleFreehandClick(e);
         handleFillClick(e);
         handleTransparentFillClick(e);
+        handleMagicWandClick(e);
       }}
       onWheel={handleWheel}
       onDragOver={handleDragOver}

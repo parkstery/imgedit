@@ -10,6 +10,15 @@ export interface Rect {
   height: number;
 }
 
+/** 마법 선택: `selection`과 동일한 bbox 안에서 1비트(0/255) row-major 마스크 */
+export interface SelectionBitmapMask {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
 /** 점선 원(복사·잘라내기·영역 캡처용). 중심+반지름은 selectionCircle에 저장 */
 export interface SelectionCircle {
   cx: number;
@@ -25,6 +34,8 @@ export type Tool =
   | 'marquee'
   /** 파란 점선 원(복사·잘라내기·선택 캡처용) */
   | 'marqueeCircle'
+  /** 색 연결 + 에지(Sobel) 기반 마법 선택 */
+  | 'magicWand'
   | 'freehand'
   | 'line'
   | 'polyline'
@@ -118,6 +129,8 @@ export interface EditorState {
   selection: Rect | null;
   /** 원형 영역 선택(복사·잘라내기). marqueeCircle 도구일 때 사용. 사각 selection 과 동시에 쓰지 않음 */
   selectionCircle: SelectionCircle | null;
+  /** 마법 선택 등 비사각 선택 마스크. null이면 `selection`만 사각형으로 유효 */
+  selectionMask: SelectionBitmapMask | null;
   isSelecting: boolean;
   isPanning: boolean;
   tool: Tool;
@@ -138,6 +151,8 @@ export interface EditorState {
   fillTolerance: number;
   /** true면 채우기 영역 판별 시 RGB만 비교하고 알파는 무시 */
   fillIgnoreAlpha: boolean;
+  /** 마법 선택: 에지 차단 강도 0~100 (높을수록 경계에서 확장을 더 일찍 멈춤) */
+  magicWandEdgeLimit: number;
   /** 아래→위 순서. 새 도형은 activeLayerId 레이어에 추가 */
   layers: EditorLayer[];
   activeLayerId: string;
@@ -159,6 +174,7 @@ export interface ImageUndoSnapshot {
   activeLayerId: string;
   selection: Rect | null;
   selectionCircle: SelectionCircle | null;
+  selectionMask: SelectionBitmapMask | null;
   zoom: number;
   position: Point;
 }
