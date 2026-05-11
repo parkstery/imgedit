@@ -34,6 +34,7 @@ import {
   ImageOff,
   ImageMinus,
   Wand2,
+  Images,
 } from 'lucide-react';
 import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -184,6 +185,8 @@ interface ToolbarProps {
   onMagicWandEdgeLimitChange: (edgeLimit: number) => void;
   /** 활성 레이어 래스터에서 현재 색(톨러런스·알파 무시 옵션)과 일치하는 모든 픽셀을 투명 처리 */
   onReplaceCurrentColorTransparentOnLayer: () => void;
+  /** 여러 이미지 파일을 현재 색·톨러런스·알파 무시로 일괄 투명 처리 후 PNG ZIP 내려받기 */
+  onBatchTransparentPngZip: () => void;
   onDeleteLastShape: () => void;
   onRedoLastShape: () => void;
   canUndoLast: boolean;
@@ -233,6 +236,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onFillIgnoreAlphaChange,
   onMagicWandEdgeLimitChange,
   onReplaceCurrentColorTransparentOnLayer,
+  onBatchTransparentPngZip,
   onDeleteLastShape,
   onRedoLastShape,
   canUndoLast,
@@ -316,6 +320,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<ImageMinus size={18} strokeWidth={1.75} />}
           label="활성 레이어 전체에서 현재 색을 투명으로 (톨러런스·알파 무시는 페인트통/배경투명 도구와 동일)"
           disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+        />
+        <ToolbarButton
+          onClick={onBatchTransparentPngZip}
+          icon={<Images size={18} strokeWidth={1.75} />}
+          label="여러 이미지 파일 일괄 투명 배경: 툴바 색·톨러런스·알파 무시(페인트통 옵션)으로 각 파일 전역 치환 후 PNG ZIP 저장"
         />
         <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
         <ToolbarButton

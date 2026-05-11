@@ -53,6 +53,7 @@ import {
   cloneSelectionBitmapMask,
   selectionMaskMatchesRect,
 } from './lib/magicWand';
+import { buildTransparentPngZip } from './lib/batchImageTransparentZip';
 import { computeFitZoomPosition, getEditorCanvasViewportSize } from './lib/viewportFit';
 
 const INITIAL_STATE_BASE: Omit<EditorState, 'layers' | 'activeLayerId'> = {
@@ -356,6 +357,47 @@ export default function App() {
     };
     nextImg.src = dataUrl;
   }, [handlePrepareImageUndoForPaint]);
+
+  const handleBatchTransparentPngZip = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.onchange = async () => {
+      const files = Array.from(input.files ?? []);
+      input.value = '';
+      if (files.length === 0) return;
+      const s = stateRef.current;
+      try {
+        const { blob, successCount, failCount } = await buildTransparentPngZip(files, {
+          colorHex: s.color,
+          tolerance: s.fillTolerance,
+          ignoreAlpha: s.fillIgnoreAlpha,
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const d = new Date();
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+        a.href = url;
+        a.download = `transparent-png-batch-${stamp}.zip`;
+        a.click();
+        URL.revokeObjectURL(url);
+        if (failCount > 0) {
+          console.warn(`일괄 투명 배경 ZIP: ${successCount}개 포함, ${failCount}개 건너뜀`);
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message === 'NO_SUCCESS') {
+          window.alert(
+            '처리에 성공한 이미지가 없습니다. 지원 형식·파일 손상 여부를 확인하거나, 색·톨러런스 설정을 조정해 보세요.'
+          );
+        } else {
+          console.error('일괄 투명 ZIP:', e);
+          window.alert('ZIP 생성에 실패했습니다. 브라우저 콘솔을 확인하세요.');
+        }
+      }
+    };
+    input.click();
+  }, []);
 
   const handleLayersMutation = useCallback((beforeLayers: EditorLayer[], beforeActiveLayerId: string, label?: string) => {
     appendUndoEntry({
@@ -1671,6 +1713,7 @@ export default function App() {
         onFillIgnoreAlphaChange={handleFillIgnoreAlphaChange}
         onMagicWandEdgeLimitChange={handleMagicWandEdgeLimitChange}
         onReplaceCurrentColorTransparentOnLayer={handleReplaceCurrentColorTransparentOnLayer}
+        onBatchTransparentPngZip={handleBatchTransparentPngZip}
         onDeleteLastShape={handleDeleteLastShape}
         onRedoLastShape={handleRedoLastShape}
         canUndoLast={undoStack.length > 0 || totalShapeCount(state.layers) > 0}
