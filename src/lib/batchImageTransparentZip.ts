@@ -1,8 +1,8 @@
 import JSZip from 'jszip';
-import { hexToRgba, replaceMatchingPixelsWithTransparent } from './floodFill';
+import { applyDetectedBorderColorKeyFromImage } from './autoBackgroundTransparent';
 
+/** 파일마다 가장자리 배경 자동 감지 후 투명 처리할 때 사용 (단일 문서의 「배경 자동 제거」와 동일 로직) */
 export interface BatchTransparentOptions {
-  colorHex: string;
   tolerance: number;
   ignoreAlpha: boolean;
 }
@@ -33,37 +33,28 @@ export function safeZipPngName(originalName: string, index: number): string {
   return `${base || `image-${index + 1}`}.png`;
 }
 
+async function dataUrlToPngBlob(dataUrl: string): Promise<Blob | null> {
+  try {
+    const res = await fetch(dataUrl);
+    const b = await res.blob();
+    return b.size > 0 ? b : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 한 장의 이미지 파일에서 `target` 색(톨러런스)과 일치하는 픽셀을 전역으로 투명 처리한 PNG Blob.
+ * 한 장의 이미지 파일에 가장자리 배경 자동 감지·제거를 적용한 PNG Blob.
  */
-export async function fileToColorkeyTransparentPngBlob(
+export async function fileToAutoBackgroundTransparentPngBlob(
   file: File,
   options: BatchTransparentOptions
 ): Promise<Blob | null> {
   const dataUrl = await readFileAsDataUrl(file);
   const img = await loadImage(dataUrl);
-  const w = Math.max(1, img.naturalWidth || img.width);
-  const h = Math.max(1, img.naturalHeight || img.height);
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0);
-  let imageData: ImageData;
-  try {
-    imageData = ctx.getImageData(0, 0, w, h);
-  } catch {
-    return null;
-  }
-  const target = hexToRgba(options.colorHex);
-  replaceMatchingPixelsWithTransparent(imageData, target, options.tolerance, {
-    ignoreAlpha: options.ignoreAlpha,
-  });
-  ctx.putImageData(imageData, 0, 0);
-  return await new Promise<Blob | null>(resolve => {
-    canvas.toBlob(b => resolve(b), 'image/png');
-  });
+  const key = applyDetectedBorderColorKeyFromImage(img, options.tolerance, options.ignoreAlpha);
+  if (key.ok === false) return null;
+  return dataUrlToPngBlob(key.dataUrl);
 }
 
 export interface BatchZipResult {
@@ -86,7 +77,7 @@ export async function buildTransparentPngZip(
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     try {
-      const blob = await fileToColorkeyTransparentPngBlob(f, options);
+      const blob = await fileToAutoBackgroundTransparentPngBlob(f, options);
       if (blob && blob.size > 0) {
         zip.file(safeZipPngName(f.name, i), blob);
         successCount++;

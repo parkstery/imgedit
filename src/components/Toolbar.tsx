@@ -334,7 +334,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton
           onClick={onBatchTransparentPngZip}
           icon={<Images size={18} strokeWidth={1.75} />}
-          label="여러 이미지 파일 일괄 투명 배경: 툴바 색·톨러런스·알파 무시(페인트통 옵션)으로 각 파일 전역 치환 후 PNG ZIP 저장"
+          label="여러 이미지 일괄 투명 배경: 파일마다 가장자리 배경 자동 감지·제거(톨러런스·알파 무시는 페인트통 옵션과 동일) 후 PNG ZIP 저장"
         />
         <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
         <ToolbarButton

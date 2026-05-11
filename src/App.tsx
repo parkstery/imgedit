@@ -402,7 +402,6 @@ export default function App() {
       const s = stateRef.current;
       try {
         const { blob, successCount, failCount } = await buildTransparentPngZip(files, {
-          colorHex: s.color,
           tolerance: s.fillTolerance,
           ignoreAlpha: s.fillIgnoreAlpha,
         });
@@ -420,7 +419,7 @@ export default function App() {
       } catch (e) {
         if (e instanceof Error && e.message === 'NO_SUCCESS') {
           window.alert(
-            '처리에 성공한 이미지가 없습니다. 지원 형식·파일 손상 여부를 확인하거나, 색·톨러런스 설정을 조정해 보세요.'
+            '처리에 성공한 이미지가 없습니다. 지원 형식·가장자리 배경 추정 실패 여부를 확인하거나, 톨러런스·알파 무시 설정을 조정해 보세요.'
           );
         } else {
           console.error('일괄 투명 ZIP:', e);
