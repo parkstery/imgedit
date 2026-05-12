@@ -39,6 +39,7 @@ import {
   applyDetectedBorderColorKeyFromImage,
   colorKeyTransparentDataUrlFromImage,
 } from './lib/autoBackgroundTransparent';
+import type { GeminiBackgroundAdvice } from './lib/geminiBackgroundAdvice';
 import { getShapeRotationCenter } from './lib/drawShapes';
 import {
   readFillTolerance,
@@ -391,6 +392,130 @@ export default function App() {
     };
     nextImg.src = out.dataUrl;
   }, [handlePrepareImageUndoForPaint]);
+
+  const handleApplyGeminiFillPrefs = useCallback(
+    (next: { fillTolerance: number; fillIgnoreAlpha: boolean; colorHex?: string }) => {
+      const t = Math.max(0, Math.min(100, Math.round(next.fillTolerance)));
+      writeFillTolerance(t);
+      writeFillIgnoreAlpha(next.fillIgnoreAlpha);
+      setState(prev => ({
+        ...prev,
+        fillTolerance: t,
+        fillIgnoreAlpha: next.fillIgnoreAlpha,
+        ...(next.colorHex && /^#[0-9A-Fa-f]{6}$/i.test(next.colorHex)
+          ? { color: next.colorHex.toLowerCase() }
+          : {}),
+      }));
+    },
+    []
+  );
+
+  const handleRunGeminiBackgroundRemoval = useCallback(
+    (advice: GeminiBackgroundAdvice) => {
+      const s = stateRef.current;
+      if (!documentHasRaster(s.layers)) return;
+      const al = getActiveLayer(s.layers, s.activeLayerId);
+      if (!al?.image || al.locked) return;
+
+      if (advice.method === 'border_histogram') {
+        const out = applyDetectedBorderColorKeyFromImage(al.image, advice.tolerance, advice.ignoreAlpha);
+        if (out.ok === false) {
+          if (out.reason === 'no_border_sample') {
+            window.alert(
+              '가장자리에서 배경으로 쓸 만한 불투명 픽셀이 없습니다. 이미지 가장자리가 모두 투명인지 확인하세요.'
+            );
+          } else if (out.reason === 'no_matching_pixels') {
+            window.alert(
+              '감지된 배경색과 일치하는 픽셀이 없습니다. Gemini 분석을 다시 하거나 톨러런스를 조정해 보세요.'
+            );
+          } else {
+            window.alert('이미지를 읽거나 저장할 수 없습니다. 콘솔을 확인하세요.');
+          }
+          return;
+        }
+        handlePrepareImageUndoForPaint('Gemini 추천·가장자리 배경 제거');
+        const nextHex = rgbaToHexRgb(out.detected);
+        const nextImg = new Image();
+        nextImg.onload = () => {
+          setState(prev => ({
+            ...prev,
+            color: nextHex,
+            fillTolerance: advice.tolerance,
+            fillIgnoreAlpha: advice.ignoreAlpha,
+            layers: mapLayersReplaceActiveLayerImagePreservePlacement(
+              prev.layers,
+              prev.activeLayerId,
+              nextImg,
+              getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+            ),
+            activeShape: null,
+            selection: null,
+            selectionCircle: null,
+            selectionMask: null,
+            polylineDraft: null,
+            freehandDraft: null,
+            textDraft: null,
+          }));
+        };
+        nextImg.onerror = () => {
+          console.warn('Gemini 배경 제거: 결과 이미지를 불러오지 못했습니다.');
+        };
+        nextImg.src = out.dataUrl;
+        writeFillTolerance(advice.tolerance);
+        writeFillIgnoreAlpha(advice.ignoreAlpha);
+        return;
+      }
+
+      if (!advice.backgroundHex) {
+        window.alert('배경 색(hex)이 없어 key_color 방식을 적용할 수 없습니다.');
+        return;
+      }
+      const rgba = hexToRgba(advice.backgroundHex);
+      const keyed = colorKeyTransparentDataUrlFromImage(
+        al.image,
+        rgba,
+        advice.tolerance,
+        advice.ignoreAlpha
+      );
+      if (!keyed) {
+        window.alert(
+          '해당 색과 일치하는 픽셀이 없습니다. Gemini 분석을 다시 하거나 톨러런스·배경 색을 조정해 보세요.'
+        );
+        return;
+      }
+      handlePrepareImageUndoForPaint('Gemini 추천·색 키 배경 제거');
+      const nextHex = rgbaToHexRgb(rgba);
+      const nextImg = new Image();
+      nextImg.onload = () => {
+        setState(prev => ({
+          ...prev,
+          color: nextHex,
+          fillTolerance: advice.tolerance,
+          fillIgnoreAlpha: advice.ignoreAlpha,
+          layers: mapLayersReplaceActiveLayerImagePreservePlacement(
+            prev.layers,
+            prev.activeLayerId,
+            nextImg,
+            getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+          ),
+          activeShape: null,
+          selection: null,
+          selectionCircle: null,
+          selectionMask: null,
+          polylineDraft: null,
+          freehandDraft: null,
+          textDraft: null,
+        }));
+      };
+      nextImg.onerror = () => {
+        console.warn('Gemini 색 키 배경 제거: 결과 이미지를 불러오지 못했습니다.');
+      };
+      nextImg.src = keyed.dataUrl;
+      writeFillTolerance(advice.tolerance);
+      writeFillIgnoreAlpha(advice.ignoreAlpha);
+    },
+    [handlePrepareImageUndoForPaint]
+  );
 
   const handleBatchTransparentPngZip = useCallback(() => {
     const input = document.createElement('input');
@@ -1816,6 +1941,8 @@ export default function App() {
         onClose={() => setIsGeminiPanelOpen(false)}
         layers={state.layers}
         activeLayerId={state.activeLayerId}
+        onApplyGeminiFillPrefs={handleApplyGeminiFillPrefs}
+        onRunGeminiBackgroundRemoval={handleRunGeminiBackgroundRemoval}
       />
 
       <TextDraftPanel
