@@ -7,6 +7,7 @@ import { LayersPanel } from './components/LayersPanel';
 import { SaveModal } from './components/SaveModal';
 import { ResizeModal } from './components/ResizeModal';
 import { CanvasSizeModal } from './components/CanvasSizeModal';
+import { GeminiPanel } from './components/GeminiPanel';
 import {
   EditorState,
   Rect,
@@ -201,6 +202,7 @@ export default function App() {
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
   const [isCanvasSizeModalOpen, setIsCanvasSizeModalOpen] = useState(false);
+  const [isGeminiPanelOpen, setIsGeminiPanelOpen] = useState(false);
   /** 캔버스 영역 스크롤을 초기화할 때 증가 (맞춤 등) */
   const [canvasScrollResetKey, setCanvasScrollResetKey] = useState(0);
   /** 툴바「영역 캡처」: 캔버스에서 드래그로 문서 좌표 영역 지정 */
@@ -1765,6 +1767,7 @@ export default function App() {
         onToggleAreaCapture={() => setAreaCaptureArmed(a => !a)}
         onCaptureSelection={handleCaptureSelection}
         onCaptureFullDocument={handleCaptureFullDocument}
+        onOpenGemini={() => setIsGeminiPanelOpen(true)}
       />
       
       <main className="flex-1 flex overflow-hidden min-h-0">
@@ -1806,6 +1809,13 @@ export default function App() {
         onApply={handleCanvasSize}
         currentWidth={getDocumentCanvasSize(state.layers).width}
         currentHeight={getDocumentCanvasSize(state.layers).height}
+      />
+
+      <GeminiPanel
+        isOpen={isGeminiPanelOpen}
+        onClose={() => setIsGeminiPanelOpen(false)}
+        layers={state.layers}
+        activeLayerId={state.activeLayerId}
       />
 
       <TextDraftPanel

@@ -214,6 +214,8 @@ interface ToolbarProps {
   /** 문서 합성 전체를 PNG로 클립보드에 복사 */
   onCaptureFullDocument: () => void;
   areaCaptureArmed: boolean;
+  /** Gemini 이미지 분석 패널 */
+  onOpenGemini: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -261,6 +263,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onToggleAreaCapture,
   onCaptureFullDocument,
   areaCaptureArmed,
+  onOpenGemini,
 }) => {
   const activeLayer = getActiveLayer(state.layers, state.activeLayerId);
   const [advancedColorOpen, setAdvancedColorOpen] = useState(false);
@@ -307,6 +310,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const fileMenuRef = useRef<HTMLDetailsElement>(null);
   const transparentMenuRef = useRef<HTMLDetailsElement>(null);
   const captureMenuRef = useRef<HTMLDetailsElement>(null);
+  const geminiMenuRef = useRef<HTMLDetailsElement>(null);
 
   const closeDetails = (r: React.RefObject<HTMLDetailsElement | null | undefined>) => {
     if (r.current) r.current.open = false;
@@ -523,6 +527,28 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             >
               <Monitor size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
               문서 전체
+            </button>
+          </div>
+        </details>
+
+        <details ref={geminiMenuRef} className="group relative shrink-0">
+          <summary className={menuSummaryClass} title="Google Gemini">
+            Gemini
+            <ChevronDown size={14} className="shrink-0 opacity-70 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className={menuPanelClass} role="menu">
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers)}
+              title="현재 화면을 Gemini에 보내 설명·질문"
+              onClick={() => {
+                onOpenGemini();
+                closeDetails(geminiMenuRef);
+              }}
+            >
+              <Sparkles size={14} className="shrink-0 text-amber-400/90" strokeWidth={1.75} aria-hidden />
+              이미지 분석…
             </button>
           </div>
         </details>
