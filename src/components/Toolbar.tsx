@@ -36,6 +36,7 @@ import {
   Wand2,
   Images,
   Sparkles,
+  ChevronDown,
 } from 'lucide-react';
 import { EditorState, LineStyle, Tool } from '../types';
 import { cn } from '../lib/utils';
@@ -303,6 +304,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     onSelectionRotationDegCommit(base + delta);
   };
 
+  const fileMenuRef = useRef<HTMLDetailsElement>(null);
+  const transparentMenuRef = useRef<HTMLDetailsElement>(null);
+  const captureMenuRef = useRef<HTMLDetailsElement>(null);
+
+  const closeDetails = (r: React.RefObject<HTMLDetailsElement | null | undefined>) => {
+    if (r.current) r.current.open = false;
+  };
+
+  const menuSummaryClass = cn(
+    'flex cursor-pointer list-none items-center gap-0.5 rounded-md border border-neutral-600 bg-neutral-900 px-2 text-xs font-medium text-neutral-100 hover:bg-neutral-800 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 shrink-0',
+    '[&::-webkit-details-marker]:hidden',
+    compactUi ? 'h-7' : 'h-8'
+  );
+  const menuPanelClass =
+    'absolute left-0 top-full z-50 mt-0.5 min-w-[12.5rem] overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 py-0.5 shadow-xl';
+  const menuRowClass =
+    'flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs text-neutral-100 hover:bg-neutral-800 disabled:pointer-events-none disabled:opacity-40';
+
   return (
     <div
       className={cn(
@@ -312,100 +331,247 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       )}
     >
       <div className="flex items-center gap-0.5 pr-2 border-r border-neutral-700 shrink-0 tb-group">
-        <ToolbarButton onClick={onOpen} icon={<FolderOpen size={18} />} label="열기" />
-        <ToolbarButton onClick={onNewCanvas} icon={<FilePlus size={18} />} label="새 캔버스" />
-        <ToolbarButton onClick={() => onPaste(undefined, true)} icon={<ClipboardPaste size={18} />} label="클립보드에서 새 이미지로 열기" />
-        <ToolbarButton onClick={onSave} icon={<Save size={18} />} label="저장" disabled={!documentHasRaster(state.layers)} />
-        <ToolbarButton onClick={onSaveAs} icon={<Download size={18} />} label="다른 이름으로 저장" disabled={!documentHasRaster(state.layers)} />
-        <ToolbarButton onClick={onResize} icon={<Scale size={18} />} label="이미지 크기 조절" disabled={!documentHasRaster(state.layers)} />
-        <ToolbarButton onClick={onCanvasSize} icon={<Maximize2 size={18} />} label="캔버스 크기 조절 (잘라내기/확장)" disabled={!documentHasRaster(state.layers)} />
-        <ToolbarButton
-          onClick={onReplaceCurrentColorTransparentOnLayer}
-          icon={<ImageMinus size={18} strokeWidth={1.75} />}
-          label="활성 레이어 전체에서 현재 색을 투명으로 (톨러런스·알파 무시는 페인트통/배경투명 도구와 동일)"
-          disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
-        />
-        <ToolbarButton
-          onClick={onAutoRemoveDetectedBackgroundOnLayer}
-          icon={<Sparkles size={18} strokeWidth={1.75} />}
-          label="배경 자동 감지·제거: 가장자리에서 지배 색을 추정해 투명 처리 후 툴바 색을 감지 색으로 맞춤"
-          disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
-        />
-        <ToolbarButton
-          onClick={onBatchTransparentPngZip}
-          icon={<Images size={18} strokeWidth={1.75} />}
-          label="여러 이미지 일괄 투명 배경: 파일마다 가장자리 배경 자동 감지·제거(톨러런스·알파 무시는 페인트통 옵션과 동일) 후 PNG ZIP 저장"
-        />
-        <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
-        <ToolbarButton
-          onClick={() => void onCaptureSelection()}
-          icon={<Frame size={18} strokeWidth={1.75} />}
-          label="문서 점선 선택 영역 캡처(클립보드)"
-          disabled={
-            !documentHasRaster(state.layers) ||
-            ((!state.selection || state.selection.width < 2 || state.selection.height < 2) &&
-              (!state.selectionCircle || state.selectionCircle.r < 1))
-          }
-        />
-        <ToolbarButton
-          onClick={onToggleAreaCapture}
-          icon={<Crop size={18} strokeWidth={1.75} />}
-          label="캔버스에서 영역 드래그 캡처(클립보드)"
-          disabled={!documentHasRaster(state.layers)}
-          active={areaCaptureArmed}
-        />
-        <ToolbarButton
-          onClick={() => void onCaptureFullDocument()}
-          icon={<Monitor size={18} strokeWidth={1.75} />}
-          label="문서 합성 전체를 클립보드로"
-          disabled={!documentHasRaster(state.layers)}
-        />
+        <details ref={fileMenuRef} className="group relative shrink-0">
+          <summary className={menuSummaryClass} title="열기·저장·크기">
+            파일
+            <ChevronDown size={14} className="shrink-0 opacity-70 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className={menuPanelClass} role="menu">
+            <button
+              type="button"
+              className={menuRowClass}
+              onClick={() => {
+                onOpen();
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <FolderOpen size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              열기
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              onClick={() => {
+                onNewCanvas();
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <FilePlus size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              새 캔버스
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              onClick={() => {
+                void onPaste(undefined, true);
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <ClipboardPaste size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              클립보드 → 새 이미지
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers)}
+              title="저장"
+              onClick={() => {
+                onSave();
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <Save size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              저장
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers)}
+              title="다른 이름으로 저장"
+              onClick={() => {
+                onSaveAs();
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <Download size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              다른 이름으로 저장
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers)}
+              title="이미지 크기 조절"
+              onClick={() => {
+                onResize();
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <Scale size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              이미지 크기
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers)}
+              title="캔버스 크기 조절(잘라내기/확장)"
+              onClick={() => {
+                onCanvasSize();
+                closeDetails(fileMenuRef);
+              }}
+            >
+              <Maximize2 size={14} className="shrink-0 text-neutral-400" aria-hidden />
+              캔버스 크기
+            </button>
+          </div>
+        </details>
+
+        <details ref={transparentMenuRef} className="group relative shrink-0">
+          <summary className={menuSummaryClass} title="투명·배경 제거·일괄">
+            투명
+            <ChevronDown size={14} className="shrink-0 opacity-70 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className={menuPanelClass} role="menu">
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+              title="활성 레이어에서 현재 색 일괄 투명(톨러런스·알파 무시는 페인트통과 동일)"
+              onClick={() => {
+                onReplaceCurrentColorTransparentOnLayer();
+                closeDetails(transparentMenuRef);
+              }}
+            >
+              <ImageMinus size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+              현재 색 → 투명(레이어)
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+              title="가장자리 색 추정 후 배경 투명"
+              onClick={() => {
+                onAutoRemoveDetectedBackgroundOnLayer();
+                closeDetails(transparentMenuRef);
+              }}
+            >
+              <Sparkles size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+              배경 자동 제거
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              title="여러 파일 일괄 처리 후 PNG ZIP"
+              onClick={() => {
+                onBatchTransparentPngZip();
+                closeDetails(transparentMenuRef);
+              }}
+            >
+              <Images size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+              일괄 투명(ZIP)
+            </button>
+          </div>
+        </details>
+
+        <details ref={captureMenuRef} className="group relative shrink-0">
+          <summary
+            className={cn(menuSummaryClass, areaCaptureArmed && 'border-blue-500 bg-blue-950/35')}
+            title="클립보드로 PNG 캡처"
+          >
+            캡처
+            <ChevronDown size={14} className="shrink-0 opacity-70 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className={menuPanelClass} role="menu">
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={
+                !documentHasRaster(state.layers) ||
+                ((!state.selection || state.selection.width < 2 || state.selection.height < 2) &&
+                  (!state.selectionCircle || state.selectionCircle.r < 1))
+              }
+              title="점선 선택 영역을 클립보드에"
+              onClick={() => {
+                void onCaptureSelection();
+                closeDetails(captureMenuRef);
+              }}
+            >
+              <Frame size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+              선택 영역
+            </button>
+            <button
+              type="button"
+              className={cn(menuRowClass, areaCaptureArmed && 'bg-blue-950/25')}
+              disabled={!documentHasRaster(state.layers)}
+              title="캔버스에서 드래그로 영역 지정"
+              onClick={() => {
+                onToggleAreaCapture();
+                closeDetails(captureMenuRef);
+              }}
+            >
+              <Crop size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+              드래그 영역{areaCaptureArmed ? ' (대기)' : ''}
+            </button>
+            <button
+              type="button"
+              className={menuRowClass}
+              disabled={!documentHasRaster(state.layers)}
+              title="문서 전체 합성"
+              onClick={() => {
+                void onCaptureFullDocument();
+                closeDetails(captureMenuRef);
+              }}
+            >
+              <Monitor size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
+              문서 전체
+            </button>
+          </div>
+        </details>
       </div>
 
       <div className="flex items-center gap-x-0.5 px-2 border-r border-neutral-700 shrink-0 tb-group">
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('select')}
           icon={<ArrowUpRight size={18} strokeWidth={2} />}
-          label="개체 선택 (도형·이미지)"
+          label="개체 선택"
           active={state.tool === 'select'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('marquee')}
           icon={<SelectionBoxToolbarIcon size={18} />}
-          label="영역 선택 (점선 사각형)"
+          label="사각 영역"
           active={state.tool === 'marquee'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('marqueeCircle')}
           icon={<SelectionCircleToolbarIcon size={18} />}
-          label="영역 선택 (점선 원): 첫·둘째 클릭이 지름의 양끝(거리=지름)"
+          label="원형 영역(지름=두 클릭 간 거리)"
           active={state.tool === 'marqueeCircle'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('magicWand')}
           icon={<Wand2 size={18} strokeWidth={1.75} />}
-          label="마법 선택: 색 연결 + 에지(Sobel)로 경계에서 멈춤. 문서 클릭으로 영역 지정"
+          label="마법 선택(연결색+에지)"
           active={state.tool === 'magicWand'}
         />
-        <ToolbarButton 
+        <ToolbarButton compact={compactUi} 
           onClick={() => onToolChange('freehand')} 
           icon={<Pencil size={18} />} 
           label="자유그리기" 
           active={state.tool === 'freehand'}
         />
-        <ToolbarButton 
+        <ToolbarButton compact={compactUi} 
           onClick={() => onToolChange('line')} 
           icon={<Minus size={18} />} 
           label="선 그리기" 
           active={state.tool === 'line'}
         />
-        <ToolbarButton 
+        <ToolbarButton compact={compactUi} 
           onClick={() => onToolChange('polyline')} 
           icon={<PolylineToolbarIcon size={18} />} 
           label="폴리라인" 
           active={state.tool === 'polyline'}
         />
-        <ToolbarButton 
+        <ToolbarButton compact={compactUi} 
           onClick={() => onToolChange('rect')} 
           icon={<Square size={18} />} 
           label="사각형 그리기" 
@@ -429,37 +595,37 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             />
           </div>
         )}
-        <ToolbarButton 
+        <ToolbarButton compact={compactUi} 
           onClick={() => onToolChange('ellipse')} 
           icon={<Circle size={18} />} 
           label="원 그리기" 
           active={state.tool === 'ellipse'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('arc')}
           icon={<ArcToolbarIcon size={18} />}
-          label="아크: 시작점 → 끝점 → 중간점(호 위)"
+          label="아크(시작·끝·호 위 점)"
           active={state.tool === 'arc'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('fill')}
           icon={<PaintBucket size={18} />}
           label="페인트통"
           active={state.tool === 'fill'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('transparentFill')}
           icon={<ImageOff size={18} strokeWidth={1.75} />}
-          label="배경 투명: 클릭한 색과 이어진 영역을 투명 처리 (합성 후 활성 레이어로 평탄화)"
+          label="연결 영역 투명"
           active={state.tool === 'transparentFill'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('eraser')}
           icon={<Eraser size={18} />}
           label="지우개"
           active={state.tool === 'eraser'}
         />
-        <ToolbarButton
+        <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('text')}
           icon={<Type size={18} />}
           label="텍스트"
@@ -606,7 +772,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title="색상 선택"
           />
           <div className="flex items-center gap-1 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1">
-            <span className="text-xs text-neutral-300">선두께</span>
+            <span className="text-[10px] text-neutral-300">선</span>
             <input
               type="number"
               min="1"
@@ -629,49 +795,49 @@ export const Toolbar: React.FC<ToolbarProps> = ({
               <option value="dashDot">일점쇄선</option>
             </select>
           </div>
-          <ToolbarButton 
+          <ToolbarButton compact={compactUi} 
             onClick={onDeleteLastShape} 
             icon={<Undo2 size={18} />} 
             label="Undo" 
             disabled={!canUndoLast}
             shortcut="Ctrl+Z"
           />
-          <ToolbarButton
+          <ToolbarButton compact={compactUi}
             onClick={onRedoLastShape}
             icon={<Redo2 size={18} />}
             label="Redo"
             disabled={!canRedoLast}
           />
-          <ToolbarButton 
+          <ToolbarButton compact={compactUi} 
             onClick={onClearShapes} 
             icon={<Trash2 size={18} />} 
-            label="모든 도형 삭제" 
+            label="도형 삭제" 
             disabled={totalShapeCount(state.layers) === 0}
           />
         </div>
         <div className="flex items-center gap-0.5 ml-1 px-1 border-l border-neutral-700">
-          <ToolbarButton
+          <ToolbarButton compact={compactUi}
             onClick={onTransformScaleDown}
             icon={<ZoomOut size={18} />}
-            label="선택 축소 (90%)"
+            label="선택 90%"
             disabled={!canTransformSelection}
           />
-          <ToolbarButton
+          <ToolbarButton compact={compactUi}
             onClick={onTransformScaleUp}
             icon={<ZoomIn size={18} />}
-            label="선택 확대 (110%)"
+            label="선택 110%"
             disabled={!canTransformSelection}
           />
-          <ToolbarButton
+          <ToolbarButton compact={compactUi}
             onClick={onTransformRotateLeft}
             icon={<RotateCcw size={18} />}
-            label="선택 회전 (-15°)"
+            label="회전 −15°"
             disabled={!canTransformSelection}
           />
-          <ToolbarButton
+          <ToolbarButton compact={compactUi}
             onClick={onTransformRotateRight}
             icon={<RotateCw size={18} />}
-            label="선택 회전 (+15°)"
+            label="회전 +15°"
             disabled={!canTransformSelection}
           />
           {selectionRotationDeg != null && (
@@ -723,7 +889,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="flex items-center gap-2 px-2 border-r border-neutral-700 tb-group shrink-0">
         <div className="flex items-center gap-0.5 tb-group">
-          <ToolbarButton onClick={onZoomOut} icon={<ZoomOut size={18} />} label="축소" compact={compactUi} />
+          <ToolbarButton compact={compactUi} onClick={onZoomOut} icon={<ZoomOut size={18} />} label="축소" />
           <input 
             type="range" 
             min="0.01" 
@@ -733,7 +899,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             onChange={(e) => onZoomChange(parseFloat(e.target.value))}
             className={cn('w-16 bg-neutral-700', formStyles.sliderBase)}
           />
-          <ToolbarButton onClick={onZoomIn} icon={<ZoomIn size={18} />} label="확대" compact={compactUi} />
+          <ToolbarButton compact={compactUi} onClick={onZoomIn} icon={<ZoomIn size={18} />} label="확대" />
         </div>
         
         <div className="flex items-center gap-2">
@@ -748,7 +914,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <span className="text-xs text-neutral-500">%</span>
         </div>
 
-        <ToolbarButton onClick={onResetZoom} icon={<Maximize size={18} />} label="원본크기" compact={compactUi} />
+        <ToolbarButton compact={compactUi} onClick={onResetZoom} icon={<Maximize size={18} />} label="원본크기" />
         <Button
           size="sm"
           variant={compactUi ? 'primary' : 'secondary'}
@@ -762,7 +928,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="flex items-center gap-x-1 border-l border-neutral-700 pl-2 shrink-0 tb-group">
         <div className="flex items-center gap-0.5 shrink-0">
-          <ToolbarButton 
+          <ToolbarButton compact={compactUi} 
             onClick={onCopy} 
             icon={<Copy size={18} />} 
             label="복사" 
@@ -774,14 +940,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             }
             shortcut="Ctrl+C"
           />
-          <ToolbarButton 
+          <ToolbarButton compact={compactUi} 
             onClick={onCut} 
             icon={<Scissors size={18} />} 
             label="잘라내기" 
             disabled={!state.selection && !state.selectionCircle}
             shortcut="Ctrl+X"
           />
-          <ToolbarButton 
+          <ToolbarButton compact={compactUi} 
             onClick={onPaste} 
             icon={<ClipboardPaste size={18} />} 
             label="붙여넣기" 
