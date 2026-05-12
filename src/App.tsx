@@ -1285,6 +1285,35 @@ export default function App() {
       return;
     }
 
+    /** 점선 사각·원·마법 선택 영역은 `selectedRasterLayerId`(개체 선택)보다 우선 — 그렇지 않으면 Ctrl+C가 전체 레이어만 복사되는 것처럼 보임 */
+    const hasMarqueeRegion =
+      (state.selection && state.selection.width >= 1 && state.selection.height >= 1) ||
+      (state.selectionCircle && state.selectionCircle.r >= 0.5);
+    if (hasMarqueeRegion) {
+      const canvas = getSelectionOrCircleCanvas();
+      if (canvas) {
+        const rectPayload =
+          state.selection ??
+          (state.selectionCircle ? boundingRectOfSelectionCircle(state.selectionCircle) : null);
+        if (rectPayload) {
+          internalClipboardRef.current = {
+            kind: 'selection',
+            rect: { ...rectPayload },
+            mask:
+              state.selectionMask && selectionMaskMatchesRect(state.selectionMask, rectPayload)
+                ? cloneSelectionBitmapMask(state.selectionMask)
+                : null,
+          };
+          try {
+            await copyCanvasToSystemClipboard(canvas);
+          } catch (err) {
+            console.error('Failed to copy:', err);
+          }
+        }
+      }
+      return;
+    }
+
     if (state.selectedRasterLayerId) {
       const layer = state.layers.find(l => l.id === state.selectedRasterLayerId);
       if (!layer?.image) return;
@@ -1312,27 +1341,6 @@ export default function App() {
         }
       }
       return;
-    }
-
-    if (!state.selection && !state.selectionCircle) return;
-    const canvas = getSelectionOrCircleCanvas();
-    if (!canvas) return;
-    const rectPayload =
-      state.selection ??
-      (state.selectionCircle ? boundingRectOfSelectionCircle(state.selectionCircle) : null);
-    if (!rectPayload) return;
-    internalClipboardRef.current = {
-      kind: 'selection',
-      rect: { ...rectPayload },
-      mask:
-        state.selectionMask && selectionMaskMatchesRect(state.selectionMask, rectPayload)
-          ? cloneSelectionBitmapMask(state.selectionMask)
-          : null,
-    };
-    try {
-      await copyCanvasToSystemClipboard(canvas);
-    } catch (err) {
-      console.error('Failed to copy:', err);
     }
   }, [state, getSelectionOrCircleCanvas, copyCanvasToSystemClipboard]);
 
