@@ -3,7 +3,14 @@ import { loadEnv } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
-const GEMINI_MODEL = 'gemini-2.0-flash';
+/** Google 쪽에서 모델이 폐기되면 NOT_FOUND가 납니다. `.env.local`의 GEMINI_MODEL로 재정의하세요. */
+const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
+
+function resolveGeminiModel(env: Record<string, string>): string {
+  const raw = (env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL).replace(/^models\//i, '');
+  if (!/^[a-z0-9][a-z0-9_.-]{0,127}$/i.test(raw)) return DEFAULT_GEMINI_MODEL;
+  return raw;
+}
 
 type ClientPart =
   | { type: 'text'; text: string }
@@ -119,7 +126,8 @@ function installGeminiMiddleware(middlewares: Connect.Server, getEnv: () => Reco
       return;
     }
 
-    const upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const modelId = resolveGeminiModel(env);
+    const upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
     try {
       const upstream = await fetch(upstreamUrl, {
@@ -144,9 +152,12 @@ function installGeminiMiddleware(middlewares: Connect.Server, getEnv: () => Reco
       }
 
       if (!upstream.ok) {
-        const msg =
-          (parsed as { error?: { message?: string } })?.error?.message ??
+        let msg =
+          (parsed as { error?: { message?: string; status?: string } })?.error?.message ??
           `Gemini API 오류 (${upstream.status})`;
+        if (/not\s*found|NOT_FOUND/i.test(msg)) {
+          msg += ` (모델: ${modelId}) — .env.local에 GEMINI_MODEL=gemini-2.5-flash 등 사용 가능한 모델 ID를 넣고 개발 서버를 다시 시작해 보세요.`;
+        }
         sendJson(res, upstream.status >= 500 ? 502 : 400, { error: msg });
         return;
       }
