@@ -708,7 +708,12 @@ export default function App() {
         textDraft,
       };
     });
-  const handleColorChange = (color: string) => setState(prev => ({ ...prev, color }));
+  const handleColorChange = (color: string) =>
+    setState(prev => ({
+      ...prev,
+      color,
+      textDraft: prev.textDraft ? { ...prev.textDraft, color } : null,
+    }));
   const handleLineWidthChange = (lineWidth: number) => setState(prev => ({ ...prev, lineWidth }));
   const handleLineStyleChange = (lineStyle: EditorState['lineStyle']) =>
     setState(prev => ({ ...prev, lineStyle }));
