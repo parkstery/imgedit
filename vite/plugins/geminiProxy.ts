@@ -3,13 +3,45 @@ import { loadEnv } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
-/** Google 쪽에서 모델이 폐기되면 NOT_FOUND가 납니다. `.env.local`의 GEMINI_MODEL로 재정의하세요. */
-const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
 
-function resolveGeminiModel(env: Record<string, string>): string {
-  const raw = (env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL).replace(/^models\//i, '');
-  if (!/^[a-z0-9][a-z0-9_.-]{0,127}$/i.test(raw)) return DEFAULT_GEMINI_MODEL;
-  return raw;
+/** NOT_FOUND 시 순차 시도(문서 기준 안정·저지연 위주). `.env.local`의 GEMINI_MODEL이 있으면 맨 앞에 둡니다. */
+const GEMINI_MODEL_FALLBACKS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-flash-latest',
+] as const;
+
+function normalizeModelId(raw: string): string | null {
+  const id = raw.replace(/^models\//i, '').trim();
+  if (!/^[a-z0-9][a-z0-9_.-]{0,127}$/i.test(id)) return null;
+  return id;
+}
+
+function buildModelCandidates(env: Record<string, string>): string[] {
+  const user = normalizeModelId(env.GEMINI_MODEL?.trim() || '');
+  const seed: string[] = [];
+  if (user) seed.push(user);
+  for (const m of GEMINI_MODEL_FALLBACKS) {
+    if (!seed.includes(m)) seed.push(m);
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of seed) {
+    const id = normalizeModelId(raw);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out.length > 0 ? out : ['gemini-2.5-flash'];
+}
+
+function isModelNotFound(httpStatus: number, parsed: unknown): boolean {
+  if (httpStatus === 404) return true;
+  if (!parsed || typeof parsed !== 'object') return false;
+  const err = (parsed as { error?: { status?: string } }).error;
+  return err?.status === 'NOT_FOUND';
 }
 
 type ClientPart =
@@ -126,49 +158,71 @@ function installGeminiMiddleware(middlewares: Connect.Server, getEnv: () => Reco
       return;
     }
 
-    const modelId = resolveGeminiModel(env);
-    const upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const modelCandidates = buildModelCandidates(env);
+    const requestBody = JSON.stringify({
+      contents: [{ role: 'user', parts: geminiParts }],
+      generationConfig: {
+        maxOutputTokens: 2048,
+        temperature: 0.35,
+      },
+    });
 
     try {
-      const upstream = await fetch(upstreamUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: geminiParts }],
-          generationConfig: {
-            maxOutputTokens: 2048,
-            temperature: 0.35,
-          },
-        }),
-      });
+      const tried: string[] = [];
 
-      const text = await upstream.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text) as unknown;
-      } catch {
-        sendJson(res, 502, { error: `Gemini 응답 파싱 실패 (${upstream.status})` });
-        return;
-      }
+      for (const modelId of modelCandidates) {
+        tried.push(modelId);
+        const upstreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-      if (!upstream.ok) {
-        let msg =
-          (parsed as { error?: { message?: string; status?: string } })?.error?.message ??
-          `Gemini API 오류 (${upstream.status})`;
-        if (/not\s*found|NOT_FOUND/i.test(msg)) {
-          msg += ` (모델: ${modelId}) — .env.local에 GEMINI_MODEL=gemini-2.5-flash 등 사용 가능한 모델 ID를 넣고 개발 서버를 다시 시작해 보세요.`;
+        const upstream = await fetch(upstreamUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: requestBody,
+        });
+
+        const text = await upstream.text();
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text) as unknown;
+        } catch {
+          if (!upstream.ok && isModelNotFound(upstream.status, null)) continue;
+          if (!upstream.ok) {
+            sendJson(res, upstream.status >= 500 ? 502 : 400, {
+              error: `Gemini 오류 응답(비JSON, ${upstream.status}): ${text.slice(0, 280)}`,
+            });
+            return;
+          }
+          sendJson(res, 502, { error: 'Gemini 본문 JSON 파싱 실패' });
+          return;
         }
-        sendJson(res, upstream.status >= 500 ? 502 : 400, { error: msg });
+
+        if (!upstream.ok) {
+          if (isModelNotFound(upstream.status, parsed)) {
+            continue;
+          }
+          let msg =
+            (parsed as { error?: { message?: string; status?: string } })?.error?.message ??
+            `Gemini API 오류 (${upstream.status})`;
+          if (/not\s*found|NOT_FOUND/i.test(msg)) {
+            msg += ` (모델: ${modelId})`;
+          }
+          sendJson(res, upstream.status >= 500 ? 502 : 400, { error: msg });
+          return;
+        }
+
+        const reply = extractTextFromGeminiResponse(parsed);
+        if (!reply.trim()) {
+          sendJson(res, 502, { error: '모델이 빈 응답을 반환했습니다.' });
+          return;
+        }
+
+        sendJson(res, 200, { text: reply });
         return;
       }
 
-      const reply = extractTextFromGeminiResponse(parsed);
-      if (!reply.trim()) {
-        sendJson(res, 502, { error: '모델이 빈 응답을 반환했습니다.' });
-        return;
-      }
-
-      sendJson(res, 200, { text: reply });
+      sendJson(res, 502, {
+        error: `Gemini NOT_FOUND: 이 API 키로 사용할 수 있는 모델을 찾지 못했습니다. 시도한 모델: ${tried.join(', ')}. https://aistudio.google.com/apikey 에서 키를 확인하고, https://ai.google.dev/gemini-api/docs/models 에서 모델 코드를 확인한 뒤 .env.local에 GEMINI_MODEL=모델코드 를 지정하세요.`,
+      });
     } catch (e) {
       sendJson(res, 502, {
         error: e instanceof Error ? e.message : 'Gemini 요청 중 오류가 발생했습니다.',
