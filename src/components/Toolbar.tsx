@@ -308,7 +308,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   };
 
   const fileMenuRef = useRef<HTMLDetailsElement>(null);
-  const captureMenuRef = useRef<HTMLDetailsElement>(null);
   const geminiMenuRef = useRef<HTMLDetailsElement>(null);
 
   const closeDetails = (r: React.RefObject<HTMLDetailsElement | null | undefined>) => {
@@ -450,60 +449,32 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         />
         <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
 
-        <details ref={captureMenuRef} className="group relative shrink-0">
-          <summary
-            className={cn(menuSummaryClass, areaCaptureArmed && 'border-blue-500 bg-blue-950/35')}
-            title="클립보드로 PNG 캡처"
-          >
-            캡처
-            <ChevronDown size={14} className="shrink-0 opacity-70 transition-transform group-open:rotate-180" aria-hidden />
-          </summary>
-          <div className={menuPanelClass} role="menu">
-            <button
-              type="button"
-              className={menuRowClass}
-              disabled={
-                !documentHasRaster(state.layers) ||
-                ((!state.selection || state.selection.width < 2 || state.selection.height < 2) &&
-                  (!state.selectionCircle || state.selectionCircle.r < 1))
-              }
-              title="점선 선택 영역을 클립보드에"
-              onClick={() => {
-                void onCaptureSelection();
-                closeDetails(captureMenuRef);
-              }}
-            >
-              <Frame size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
-              선택 영역
-            </button>
-            <button
-              type="button"
-              className={cn(menuRowClass, areaCaptureArmed && 'bg-blue-950/25')}
-              disabled={!documentHasRaster(state.layers)}
-              title="캔버스에서 드래그로 영역 지정"
-              onClick={() => {
-                onToggleAreaCapture();
-                closeDetails(captureMenuRef);
-              }}
-            >
-              <Crop size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
-              드래그 영역{areaCaptureArmed ? ' (대기)' : ''}
-            </button>
-            <button
-              type="button"
-              className={menuRowClass}
-              disabled={!documentHasRaster(state.layers)}
-              title="문서 전체 합성"
-              onClick={() => {
-                void onCaptureFullDocument();
-                closeDetails(captureMenuRef);
-              }}
-            >
-              <Monitor size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
-              문서 전체
-            </button>
-          </div>
-        </details>
+        <ToolbarButton
+          compact={compactUi}
+          onClick={() => void onCaptureSelection()}
+          icon={<Frame size={18} strokeWidth={1.75} />}
+          label="문서 점선 선택 영역 캡처(클립보드)"
+          disabled={
+            !documentHasRaster(state.layers) ||
+            ((!state.selection || state.selection.width < 2 || state.selection.height < 2) &&
+              (!state.selectionCircle || state.selectionCircle.r < 1))
+          }
+        />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onToggleAreaCapture}
+          icon={<Crop size={18} strokeWidth={1.75} />}
+          label="캔버스에서 영역 드래그 캡처(클립보드)"
+          disabled={!documentHasRaster(state.layers)}
+          active={areaCaptureArmed}
+        />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={() => void onCaptureFullDocument()}
+          icon={<Monitor size={18} strokeWidth={1.75} />}
+          label="문서 합성 전체를 클립보드로"
+          disabled={!documentHasRaster(state.layers)}
+        />
 
         <details ref={geminiMenuRef} className="group relative shrink-0">
           <summary className={menuSummaryClass} title="Google Gemini">
