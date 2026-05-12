@@ -308,7 +308,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   };
 
   const fileMenuRef = useRef<HTMLDetailsElement>(null);
-  const transparentMenuRef = useRef<HTMLDetailsElement>(null);
   const captureMenuRef = useRef<HTMLDetailsElement>(null);
   const geminiMenuRef = useRef<HTMLDetailsElement>(null);
 
@@ -429,52 +428,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </div>
         </details>
 
-        <details ref={transparentMenuRef} className="group relative shrink-0">
-          <summary className={menuSummaryClass} title="투명·배경 제거·일괄">
-            투명
-            <ChevronDown size={14} className="shrink-0 opacity-70 transition-transform group-open:rotate-180" aria-hidden />
-          </summary>
-          <div className={menuPanelClass} role="menu">
-            <button
-              type="button"
-              className={menuRowClass}
-              disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
-              title="활성 레이어에서 현재 색 일괄 투명(톨러런스·알파 무시는 페인트통과 동일)"
-              onClick={() => {
-                onReplaceCurrentColorTransparentOnLayer();
-                closeDetails(transparentMenuRef);
-              }}
-            >
-              <ImageMinus size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
-              현재 색 → 투명(레이어)
-            </button>
-            <button
-              type="button"
-              className={menuRowClass}
-              disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
-              title="가장자리 색 추정 후 배경 투명"
-              onClick={() => {
-                onAutoRemoveDetectedBackgroundOnLayer();
-                closeDetails(transparentMenuRef);
-              }}
-            >
-              <Sparkles size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
-              배경 자동 제거
-            </button>
-            <button
-              type="button"
-              className={menuRowClass}
-              title="여러 파일 일괄 처리 후 PNG ZIP"
-              onClick={() => {
-                onBatchTransparentPngZip();
-                closeDetails(transparentMenuRef);
-              }}
-            >
-              <Images size={14} className="shrink-0 text-neutral-400" strokeWidth={1.75} aria-hidden />
-              일괄 투명(ZIP)
-            </button>
-          </div>
-        </details>
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onReplaceCurrentColorTransparentOnLayer}
+          icon={<ImageMinus size={18} strokeWidth={1.75} />}
+          label="활성 레이어 전체에서 현재 색을 투명으로 (톨러런스·알파 무시는 페인트통/배경투명 도구와 동일)"
+          disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+        />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onAutoRemoveDetectedBackgroundOnLayer}
+          icon={<Sparkles size={18} strokeWidth={1.75} />}
+          label="배경 자동 감지·제거: 가장자리에서 지배 색을 추정해 투명 처리 후 툴바 색을 감지 색으로 맞춤"
+          disabled={!documentHasRaster(state.layers) || !activeLayer?.image || activeLayer.locked}
+        />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onBatchTransparentPngZip}
+          icon={<Images size={18} strokeWidth={1.75} />}
+          label="여러 이미지 일괄 투명 배경: 파일마다 가장자리 배경 자동 감지·제거(톨러런스·알파 무시는 페인트통 옵션과 동일) 후 PNG ZIP 저장"
+        />
+        <div className="mx-0.5 h-5 w-px bg-neutral-600 shrink-0" aria-hidden />
 
         <details ref={captureMenuRef} className="group relative shrink-0">
           <summary
