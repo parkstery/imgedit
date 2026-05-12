@@ -35,6 +35,7 @@ import {
   ImageMinus,
   Wand2,
   Images,
+  ImagePlus,
   Sparkles,
   ChevronDown,
 } from 'lucide-react';
@@ -426,6 +427,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </button>
           </div>
         </details>
+
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onNewCanvas}
+          icon={<FilePlus size={18} />}
+          label="새 캔버스"
+        />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={() => void onPaste(undefined, false)}
+          icon={<ImagePlus size={18} strokeWidth={1.75} />}
+          label="클립보드의 이미지를 현재 캔버스(활성 레이어)에 불러오기 (내부 복사·시스템 클립보드 이미지, Ctrl+V와 동일)"
+        />
 
         <ToolbarButton
           compact={compactUi}
