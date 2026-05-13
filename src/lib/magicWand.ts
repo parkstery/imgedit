@@ -196,3 +196,49 @@ export function cloneSelectionBitmapMask(m: SelectionBitmapMask | null): Selecti
   if (!m) return null;
   return { ...m, data: new Uint8Array(m.data) };
 }
+
+/**
+ * 비트마스크 선택의 실제 0/1 경계에 맞춰 점선 윤곽을 그립니다.
+ * bbox `strokeRect`만 쓰면 사각형 선택처럼 보이는 문제를 줄입니다.
+ */
+export function strokeSelectionBitmapMaskOutline(
+  ctx: CanvasRenderingContext2D,
+  m: SelectionBitmapMask,
+  zoom: number
+): void {
+  const w = m.width;
+  const h = m.height;
+  const d = m.data;
+  const sel = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return false;
+    return d[y * w + x] !== 0;
+  };
+  const dx = m.x;
+  const dy = m.y;
+  ctx.beginPath();
+  for (let ex = 0; ex <= w; ex++) {
+    for (let y = 0; y < h; y++) {
+      if (sel(ex - 1, y) !== sel(ex, y)) {
+        const x0 = dx + ex;
+        const y0 = dy + y;
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x0, y0 + 1);
+      }
+    }
+  }
+  for (let ey = 0; ey <= h; ey++) {
+    for (let x = 0; x < w; x++) {
+      if (sel(x, ey - 1) !== sel(x, ey)) {
+        const x0 = dx + x;
+        const y0 = dy + ey;
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x0 + 1, y0);
+      }
+    }
+  }
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = Math.max(1, 2 / zoom);
+  ctx.setLineDash([5 / zoom, 5 / zoom]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}

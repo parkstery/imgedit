@@ -40,6 +40,7 @@ import {
   cloneSelectionBitmapMask,
   magicWandRegionMask,
   selectionMaskMatchesRect,
+  strokeSelectionBitmapMaskOutline,
 } from '../lib/magicWand';
 
 interface CanvasEditorProps {
@@ -745,20 +746,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     }
 
     if (state.selection) {
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 2 / state.zoom;
-      ctx.setLineDash([5 / state.zoom, 5 / state.zoom]);
-      ctx.strokeRect(
-        state.selection.x,
-        state.selection.y,
-        state.selection.width,
-        state.selection.height
-      );
-      ctx.setLineDash([]);
-      if (
-        state.selectionMask &&
-        selectionMaskMatchesRect(state.selectionMask, state.selection)
-      ) {
+      const alignedMask =
+        state.selectionMask && selectionMaskMatchesRect(state.selectionMask, state.selection);
+      if (alignedMask) {
         const m = state.selectionMask;
         const id = ctx.createImageData(m.width, m.height);
         for (let i = 0; i < m.width * m.height; i++) {
@@ -770,6 +760,18 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           id.data[o + 3] = 72;
         }
         ctx.putImageData(id, m.x, m.y);
+        strokeSelectionBitmapMaskOutline(ctx, m, state.zoom);
+      } else {
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2 / state.zoom;
+        ctx.setLineDash([5 / state.zoom, 5 / state.zoom]);
+        ctx.strokeRect(
+          state.selection.x,
+          state.selection.y,
+          state.selection.width,
+          state.selection.height
+        );
+        ctx.setLineDash([]);
       }
     }
     if (state.selectionCircle && state.selectionCircle.r > 0) {
