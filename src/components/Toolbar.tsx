@@ -825,50 +825,57 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             label="회전 +15°"
             disabled={!canTransformSelection}
           />
-          {selectionRotationDeg != null && (
-            <div
-              className="flex items-center gap-0.5 ml-0.5 px-1.5 py-0.5 rounded-md border border-neutral-700 bg-neutral-900 shrink-0"
-              title="절대 각도(도). Enter 또는 포커스 해제로 적용. 화살표는 45°씩 조절"
-            >
-              <span className="text-[10px] text-neutral-400 whitespace-nowrap pr-0.5">각도 °</span>
-              <Button
-                onClick={() => stepRotationBy45(-45)}
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                title="45° 감소"
-                aria-label="회전 각도 45도 감소"
+          <div
+            className="ml-0.5 flex min-h-[30px] min-w-[200px] shrink-0 items-center justify-start"
+            aria-live="polite"
+          >
+            {selectionRotationDeg != null ? (
+              <div
+                className="flex items-center gap-0.5 rounded-md border border-neutral-700 bg-neutral-900 px-1.5 py-0.5 shrink-0"
+                title="절대 각도(도). Enter 또는 포커스 해제로 적용. 화살표는 45°씩 조절"
               >
-                <ArrowLeft size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
-              </Button>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={rotationDraft}
-                onChange={(e) => setRotationDraft(e.target.value)}
-                onBlur={() => commitRotationDraft()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    commitRotationDraft();
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-                className={cn('w-14 px-1 py-0.5 text-xs text-center tabular-nums', formStyles.inputBase)}
-                aria-label="선택 개체 회전 각도(도)"
-              />
-              <Button
-                onClick={() => stepRotationBy45(45)}
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                title="45° 증가"
-                aria-label="회전 각도 45도 증가"
-              >
-                <ArrowRight size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
-              </Button>
-            </div>
-          )}
+                <span className="text-[10px] text-neutral-400 whitespace-nowrap pr-0.5">각도 °</span>
+                <Button
+                  onClick={() => stepRotationBy45(-45)}
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  title="45° 감소"
+                  aria-label="회전 각도 45도 감소"
+                >
+                  <ArrowLeft size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                </Button>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={rotationDraft}
+                  onChange={(e) => setRotationDraft(e.target.value)}
+                  onBlur={() => commitRotationDraft()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitRotationDraft();
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  className={cn('w-14 px-1 py-0.5 text-xs text-center tabular-nums', formStyles.inputBase)}
+                  aria-label="선택 개체 회전 각도(도)"
+                />
+                <Button
+                  onClick={() => stepRotationBy45(45)}
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  title="45° 증가"
+                  aria-label="회전 각도 45도 증가"
+                >
+                  <ArrowRight size={20} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                </Button>
+              </div>
+            ) : (
+              <span className="sr-only">개체를 하나 선택하면 회전 각도를 입력할 수 있습니다.</span>
+            )}
+          </div>
         </div>
       </div>
 
