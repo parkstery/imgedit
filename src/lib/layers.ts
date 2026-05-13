@@ -286,6 +286,54 @@ export type InteractivePickResult =
   | { kind: 'shape'; shape: Shape; layerId: string }
   | { kind: 'raster'; layerId: string };
 
+/** 래스터는 이 알파 이하이면 클릭 통과(아래 레이어·빈 영역 클릭 가능). 안티앨리어싱 경계 여유 */
+const RASTER_PICK_ALPHA_THRESHOLD = 28;
+
+/**
+ * 이미지 **원본(내재)** 픽셀 (srcX, srcY)의 알파. CORS 오염·실패 시 null.
+ */
+export function readRasterAlphaAtImagePixel(
+  img: HTMLImageElement,
+  srcX: number,
+  srcY: number
+): number | null {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (!iw || !ih) return null;
+  const x = Math.max(0, Math.min(iw - 1, Math.floor(srcX)));
+  const y = Math.max(0, Math.min(ih - 1, Math.floor(srcY)));
+  const c = document.createElement('canvas');
+  c.width = 1;
+  c.height = 1;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  try {
+    ctx.drawImage(img, x, y, 1, 1, 0, 0, 1, 1);
+    return ctx.getImageData(0, 0, 1, 1).data[3];
+  } catch {
+    return null;
+  }
+}
+
+function rasterLocalCenterHitHasOpaquePixel(
+  img: HTMLImageElement,
+  lx: number,
+  ly: number,
+  w: number,
+  h: number
+): boolean {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  if (iw < 1 || ih < 1) return true;
+  const docPx = lx + w / 2;
+  const docPy = ly + h / 2;
+  const srcX = (docPx * iw) / Math.max(1, w);
+  const srcY = (docPy * ih) / Math.max(1, h);
+  const a = readRasterAlphaAtImagePixel(img, srcX, srcY);
+  if (a === null) return true;
+  return a > RASTER_PICK_ALPHA_THRESHOLD;
+}
+
 /** 위 레이어부터: 같은 레이어에서는 도형이 래스터보다 위. 잠금·숨김 레이어는 제외. */
 export function pickTopInteractiveTarget(
   layers: readonly EditorLayer[],
@@ -316,6 +364,9 @@ export function pickTopInteractiveTarget(
         ly = dx * sin + dy * cos;
       }
       if (lx >= -w / 2 && lx <= w / 2 && ly >= -h / 2 && ly <= h / 2) {
+        if (!rasterLocalCenterHitHasOpaquePixel(layer.image, lx, ly, w, h)) {
+          continue;
+        }
         return { kind: 'raster', layerId: layer.id };
       }
     }
