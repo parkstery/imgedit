@@ -35,6 +35,7 @@ import {
   mapLayersReplaceActiveShapes,
   mapLayersUpdateShapeById,
   pickTopInteractiveTarget,
+  trimRasterLayerAlphaBounds,
 } from '../lib/layers';
 import {
   cloneSelectionBitmapMask,
@@ -1195,22 +1196,34 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const nextImg = new Image();
     nextImg.onload = () => {
-      setState(prev => ({
-        ...prev,
-        layers: mapLayersFlattenRasterToActive(
+      setState(prev => {
+        const flat = mapLayersFlattenRasterToActive(
           prev.layers,
           prev.activeLayerId,
           nextImg,
           getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
-        ),
-        activeShape: null,
-        selection: null,
-        selectionCircle: null,
-        selectionMask: null,
-        polylineDraft: null,
-        freehandDraft: null,
-        textDraft: null,
-      }));
+        );
+        const active = getActiveLayer(flat, prev.activeLayerId);
+        if (active?.image) {
+          void trimRasterLayerAlphaBounds(active).then(trimmed => {
+            setState(p2 => ({
+              ...p2,
+              layers: p2.layers.map(l => (l.id === trimmed.id ? trimmed : l)),
+            }));
+          });
+        }
+        return {
+          ...prev,
+          layers: flat,
+          activeShape: null,
+          selection: null,
+          selectionCircle: null,
+          selectionMask: null,
+          polylineDraft: null,
+          freehandDraft: null,
+          textDraft: null,
+        };
+      });
     };
     nextImg.onerror = () => {
       console.warn('페인트통: 결과 이미지를 불러오지 못했습니다.');
@@ -1263,22 +1276,34 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
 
     const nextImg = new Image();
     nextImg.onload = () => {
-      setState(prev => ({
-        ...prev,
-        layers: mapLayersFlattenRasterToActive(
+      setState(prev => {
+        const flat = mapLayersFlattenRasterToActive(
           prev.layers,
           prev.activeLayerId,
           nextImg,
           getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
-        ),
-        activeShape: null,
-        selection: null,
-        selectionCircle: null,
-        selectionMask: null,
-        polylineDraft: null,
-        freehandDraft: null,
-        textDraft: null,
-      }));
+        );
+        const active = getActiveLayer(flat, prev.activeLayerId);
+        if (active?.image) {
+          void trimRasterLayerAlphaBounds(active).then(trimmed => {
+            setState(p2 => ({
+              ...p2,
+              layers: p2.layers.map(l => (l.id === trimmed.id ? trimmed : l)),
+            }));
+          });
+        }
+        return {
+          ...prev,
+          layers: flat,
+          activeShape: null,
+          selection: null,
+          selectionCircle: null,
+          selectionMask: null,
+          polylineDraft: null,
+          freehandDraft: null,
+          textDraft: null,
+        };
+      });
     };
     nextImg.onerror = () => {
       console.warn('배경 투명: 결과 이미지를 불러오지 못했습니다.');

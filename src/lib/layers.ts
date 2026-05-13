@@ -431,3 +431,89 @@ export function bakeRasterLayerVisualToAxisAligned(layer: EditorLayer): Promise<
     out.src = dataUrl;
   });
 }
+
+/** 알파가 threshold 를 넘는 픽셀이 차지하는 축정렬 bbox. 없으면 null */
+export function boundingRectOfOpaqueImageData(id: ImageData, alphaThreshold = 0): Rect | null {
+  const w = id.width;
+  const h = id.height;
+  const d = id.data;
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w * 4;
+    for (let x = 0; x < w; x++) {
+      if (d[row + x * 4 + 3] > alphaThreshold) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+/**
+ * 비트맵에서 완전 투명(알파 0)만 잘라 냅니다. 문서 전체 크기로 합성된 뒤에도
+ * 실제 그림 크기에 맞게 image·imageX·imageY 를 맞춥니다.
+ */
+export async function trimRasterLayerAlphaBounds(layer: EditorLayer): Promise<EditorLayer> {
+  if (!layer.image) return layer;
+  const baked = await bakeRasterLayerVisualToAxisAligned(layer);
+  if (!baked) return layer;
+  const L: EditorLayer = {
+    ...layer,
+    image: baked.image,
+    imageX: baked.imageX,
+    imageY: baked.imageY,
+    imageRotation: undefined,
+  };
+  const img = L.image;
+  const w0 = img.width;
+  const h0 = img.height;
+  if (w0 <= 0 || h0 <= 0) return layer;
+
+  const c = document.createElement('canvas');
+  c.width = w0;
+  c.height = h0;
+  const ctx = c.getContext('2d');
+  if (!ctx) return L;
+  ctx.drawImage(img, 0, 0);
+  let id: ImageData;
+  try {
+    id = ctx.getImageData(0, 0, w0, h0);
+  } catch {
+    return L;
+  }
+  const box = boundingRectOfOpaqueImageData(id, 0);
+  if (!box) return L;
+  if (box.x <= 0 && box.y <= 0 && box.width >= w0 && box.height >= h0) return L;
+
+  const out = document.createElement('canvas');
+  out.width = box.width;
+  out.height = box.height;
+  const octx = out.getContext('2d');
+  if (!octx) return L;
+  octx.drawImage(c, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
+  let dataUrl: string;
+  try {
+    dataUrl = out.toDataURL();
+  } catch {
+    return L;
+  }
+  return new Promise(resolve => {
+    const ni = new Image();
+    ni.onload = () =>
+      resolve({
+        ...L,
+        image: ni,
+        imageX: (L.imageX ?? 0) + box.x,
+        imageY: (L.imageY ?? 0) + box.y,
+      });
+    ni.onerror = () => resolve(L);
+    ni.src = dataUrl;
+  });
+}

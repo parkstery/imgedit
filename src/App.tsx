@@ -29,10 +29,10 @@ import {
   getActiveLayer,
   getDocumentCanvasSize,
   mapLayersReplaceActiveLayerImagePreservePlacement,
-  mapLayersReplaceActiveLayerRaster,
   mapLayersReplaceActiveShapes,
   mapLayersUpdateShapeById,
   totalShapeCount,
+  trimRasterLayerAlphaBounds,
 } from './lib/layers';
 import { hexToRgba, rgbaToHexRgb } from './lib/floodFill';
 import {
@@ -1113,10 +1113,11 @@ export default function App() {
       });
     };
 
-    Promise.all(state.layers.map(rescaleLayerImage)).then(nextLayers => {
+    Promise.all(state.layers.map(rescaleLayerImage)).then(async nextLayers => {
+      const trimmed = await Promise.all(nextLayers.map(l => trimRasterLayerAlphaBounds(l)));
       setState(prev => ({
         ...prev,
-        layers: nextLayers,
+        layers: trimmed,
         selection: null,
         selectionCircle: null,
         selectionMask: null,
@@ -1209,10 +1210,11 @@ export default function App() {
       });
     };
 
-    Promise.all(state.layers.map(rescaleLayerImage)).then(nextLayers => {
+    Promise.all(state.layers.map(rescaleLayerImage)).then(async nextLayers => {
+      const trimmed = await Promise.all(nextLayers.map(l => trimRasterLayerAlphaBounds(l)));
       setState(prev => ({
         ...prev,
-        layers: nextLayers,
+        layers: trimmed,
         selection: null,
         selectionCircle: null,
         selectionMask: null,
@@ -1397,13 +1399,14 @@ export default function App() {
 
       const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
       const activeLayer = getActiveLayer(state.layers, state.activeLayerId);
+      if (!activeLayer) return;
       const canvas = document.createElement('canvas');
       canvas.width = dw;
       canvas.height = dh;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      if (activeLayer?.image) {
+      if (activeLayer.image) {
         drawRasterImageOnContext(ctx, activeLayer);
       }
       if (state.selection) {
@@ -1441,14 +1444,29 @@ export default function App() {
       }
 
       const newImg = new Image();
-      newImg.onload = () => {
+      newImg.onload = async () => {
+        const interim: EditorLayer = {
+          ...activeLayer,
+          image: newImg,
+          imageX: 0,
+          imageY: 0,
+          imageRotation: undefined,
+        };
+        const trimmed = await trimRasterLayerAlphaBounds(interim);
         setState(prev => ({
           ...prev,
-          layers: mapLayersReplaceActiveLayerRaster(
-            prev.layers,
-            prev.activeLayerId,
-            newImg,
-            activeLayer?.fileName ?? getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null
+          layers: prev.layers.map(l =>
+            l.id === prev.activeLayerId
+              ? {
+                  ...l,
+                  image: trimmed.image ?? newImg,
+                  imageX: trimmed.imageX ?? 0,
+                  imageY: trimmed.imageY ?? 0,
+                  imageRotation: undefined,
+                  fileName:
+                    activeLayer?.fileName ?? getActiveLayer(prev.layers, prev.activeLayerId)?.fileName ?? null,
+                }
+              : l
           ),
           selection: null,
           selectionCircle: null,
@@ -1533,7 +1551,16 @@ export default function App() {
       ctx.drawImage(cloned, nx, ny);
       ctx.restore();
       const merged = new Image();
-      merged.onload = () => {
+      merged.onload = async () => {
+        const mergedLayer: EditorLayer = {
+          ...activeLayer,
+          image: merged,
+          fileName: activeLayer.fileName ?? payload.fileName ?? 'pasted-image.png',
+          imageX: left,
+          imageY: top,
+          imageRotation: undefined,
+        };
+        const trimmed = await trimRasterLayerAlphaBounds(mergedLayer);
         setState(prev => ({
           ...prev,
           tool: 'select',
@@ -1541,10 +1568,10 @@ export default function App() {
             l.id === prev.activeLayerId
               ? {
                   ...l,
-                  image: merged,
-                  fileName: activeLayer.fileName ?? payload.fileName ?? 'pasted-image.png',
-                  imageX: left,
-                  imageY: top,
+                  image: trimmed.image ?? merged,
+                  fileName: trimmed.fileName ?? activeLayer.fileName ?? payload.fileName ?? 'pasted-image.png',
+                  imageX: trimmed.imageX ?? left,
+                  imageY: trimmed.imageY ?? top,
                   imageRotation: undefined,
                 }
               : l
@@ -1653,7 +1680,16 @@ export default function App() {
       }
 
       const mergedImg = new Image();
-      mergedImg.onload = () => {
+      mergedImg.onload = async () => {
+        const mergedLayer: EditorLayer = {
+          ...activeLayer,
+          image: mergedImg,
+          fileName: activeLayer.fileName ?? 'pasted-image.png',
+          imageX: left,
+          imageY: top,
+          imageRotation: undefined,
+        };
+        const trimmed = await trimRasterLayerAlphaBounds(mergedLayer);
         appendUndoEntry({ type: 'imageMerge', snapshot, label: '붙여넣기 (현재 이미지)' });
         pushPasteUndoSnapshot(snapshot);
         setState(prev => ({
@@ -1663,10 +1699,10 @@ export default function App() {
             l.id === prev.activeLayerId
               ? {
                   ...l,
-                  image: mergedImg,
-                  fileName: activeLayer.fileName ?? 'pasted-image.png',
-                  imageX: left,
-                  imageY: top,
+                  image: trimmed.image ?? mergedImg,
+                  fileName: trimmed.fileName ?? activeLayer.fileName ?? 'pasted-image.png',
+                  imageX: trimmed.imageX ?? left,
+                  imageY: trimmed.imageY ?? top,
                   imageRotation: undefined,
                 }
               : l
