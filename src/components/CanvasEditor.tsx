@@ -188,11 +188,36 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   const arcDraftRef = useRef<Point[]>([]);
   const arcHoverRef = useRef<Point | null>(null);
   const [captureDraftRect, setCaptureDraftRect] = useState<Rect | null>(null);
+  /** 마법 선택: LMB 누른 채 드래그 시 커서(시드)에 맞춰 연속 갱신 */
+  const magicWandActiveRef = useRef(false);
+  const magicWandRafRef = useRef<number | null>(null);
+  const wandInputRef = useRef({
+    layers: state.layers,
+    fillTolerance: state.fillTolerance,
+    fillIgnoreAlpha: state.fillIgnoreAlpha,
+    magicWandEdgeLimit: state.magicWandEdgeLimit,
+  });
 
   /** 선택 도구에서 커서 아래 도형이 있을 때 true → 커서를 move 로 바꿈 */
   const [hoveringShape, setHoveringShape] = useState(false);
   /** 선택 도구에서 핸들 위 호버 상태 (커서 피드백용) */
   const [hoverHandle, setHoverHandle] = useState<PickedHandle | null>(null);
+
+  wandInputRef.current = {
+    layers: state.layers,
+    fillTolerance: state.fillTolerance,
+    fillIgnoreAlpha: state.fillIgnoreAlpha,
+    magicWandEdgeLimit: state.magicWandEdgeLimit,
+  };
+
+  useEffect(() => {
+    return () => {
+      if (magicWandRafRef.current != null) {
+        cancelAnimationFrame(magicWandRafRef.current);
+        magicWandRafRef.current = null;
+      }
+    };
+  }, []);
 
   const ROTATION_HANDLE_OFFSET_PX = 24; // 화면 픽셀 기준 상단에서 떨어지는 거리
   const HANDLE_HIT_TOL_PX = 10;
@@ -1259,23 +1284,19 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     nextImg.src = dataUrl;
   };
 
-  const handleMagicWandClick = (e: React.MouseEvent) => {
-    if (state.tool !== 'magicWand' || !documentHasRaster(state.layers)) return;
-    const { width: dw, height: dh } = getDocumentCanvasSize(state.layers);
-    const imgPos = toImageCoords(getMousePos(e));
-    const ix = Math.floor(imgPos.x);
-    const iy = Math.floor(imgPos.y);
-    const shapes = flattenVisibleShapesInOrder(state.layers);
-
+  const applyMagicWandAt = useCallback((ix: number, iy: number) => {
+    const { layers, fillTolerance, fillIgnoreAlpha, magicWandEdgeLimit } = wandInputRef.current;
+    const { width: dw, height: dh } = getDocumentCanvasSize(layers);
     if (ix < 0 || iy < 0 || ix >= dw || iy >= dh) return;
 
+    const shapes = flattenVisibleShapesInOrder(layers);
     const canvas = document.createElement('canvas');
     canvas.width = dw;
     canvas.height = dh;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    drawVisibleLayerRastersToContext(ctx, state.layers, dw, dh);
+    drawVisibleLayerRastersToContext(ctx, layers, dw, dh);
     strokeShapesOnContext(ctx, shapes);
 
     let imageData: ImageData;
@@ -1286,9 +1307,9 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       return;
     }
 
-    const region = magicWandRegionMask(imageData, ix, iy, state.fillTolerance, {
-      ignoreAlpha: state.fillIgnoreAlpha,
-      edgeLimit: state.magicWandEdgeLimit,
+    const region = magicWandRegionMask(imageData, ix, iy, fillTolerance, {
+      ignoreAlpha: fillIgnoreAlpha,
+      edgeLimit: magicWandEdgeLimit,
     });
     if (!region) return;
 
@@ -1308,7 +1329,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       selectedRasterLayerId: null,
       isSelecting: false,
     }));
-  };
+  }, [setState]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
@@ -1336,6 +1357,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           lastDocPoint: imgPos,
         };
         applyEraserStroke(al.id, imgPos, imgPos);
+      } else if (state.tool === 'magicWand' && documentHasRaster(state.layers)) {
+        const imgPos = toImageCoords(pos);
+        magicWandActiveRef.current = true;
+        applyMagicWandAt(Math.floor(imgPos.x), Math.floor(imgPos.y));
       } else if (state.tool === 'select') {
         const imgPos = toImageCoords(pos);
         if (state.selectedShapeIds.length === 1) {
@@ -1737,6 +1762,25 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
     const imgPos = toImageCoords(pos);
     lastImgPosRef.current = imgPos;
 
+    if (
+      magicWandActiveRef.current &&
+      state.tool === 'magicWand' &&
+      documentHasRaster(state.layers) &&
+      magicWandRafRef.current == null
+    ) {
+      magicWandRafRef.current = requestAnimationFrame(() => {
+        magicWandRafRef.current = null;
+        if (!magicWandActiveRef.current) return;
+        const p = lastImgPosRef.current;
+        const { width: dw, height: dh } = getDocumentCanvasSize(wandInputRef.current.layers);
+        const ix = Math.floor(p.x);
+        const iy = Math.floor(p.y);
+        if (ix >= 0 && iy >= 0 && ix < dw && iy < dh) {
+          applyMagicWandAt(ix, iy);
+        }
+      });
+    }
+
     if (state.tool === 'marqueeCircle' && marqueeCircleAnchorRef.current) {
       marqueeCirclePreviewRef.current = { x: imgPos.x, y: imgPos.y };
       drawRef.current();
@@ -2060,6 +2104,12 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
   };
 
   const handleMouseUp = () => {
+    magicWandActiveRef.current = false;
+    if (magicWandRafRef.current != null) {
+      cancelAnimationFrame(magicWandRafRef.current);
+      magicWandRafRef.current = null;
+    }
+
     if (areaCaptureDragRef.current && areaCaptureArmed) {
       const start = areaCaptureDragRef.current.start;
       areaCaptureDragRef.current = null;
@@ -2334,7 +2384,6 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         handleFreehandClick(e);
         handleFillClick(e);
         handleTransparentFillClick(e);
-        handleMagicWandClick(e);
       }}
       onWheel={handleWheel}
       onDragOver={handleDragOver}

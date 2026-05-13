@@ -535,7 +535,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <ToolbarButton compact={compactUi}
           onClick={() => onToolChange('magicWand')}
           icon={<Wand2 size={18} strokeWidth={1.75} />}
-          label="마법 선택(연결색+에지)"
+          label="마법 선택(누른 채 드래그로 시드 이동·연결색+에지)"
           active={state.tool === 'magicWand'}
         />
         <ToolbarButton compact={compactUi} 
@@ -670,7 +670,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 ? '페인트통 옵션'
                 : state.tool === 'transparentFill'
                   ? '배경 투명 옵션'
-                  : '마법 선택 옵션'
+                  : '마법 선택 옵션 (좌클릭 유지 후 드래그로 시드 이동)'
             }
           >
             <div className="flex items-center gap-1.5">
