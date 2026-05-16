@@ -1093,13 +1093,15 @@ export default function App() {
     }));
   };
 
-  const handleResize = (newWidth: number, newHeight: number) => {
+  const handleResize = (newWidth: number, newHeight: number, lockAspectRatio: boolean) => {
     if (!documentHasRaster(state.layers)) return;
-    const { width: currentWidth, height: currentHeight } = getDocumentCanvasSize(state.layers);
-    if (currentWidth <= 0 || currentHeight <= 0) return;
+    const active = getActiveLayer(state.layers, state.activeLayerId);
+    const baseW = active?.image?.width ?? 0;
+    const baseH = active?.image?.height ?? 0;
+    if (baseW <= 0 || baseH <= 0) return;
 
-    const scaleX = newWidth / currentWidth;
-    const scaleY = newHeight / currentHeight;
+    const scaleX = newWidth / baseW;
+    const scaleY = lockAspectRatio ? scaleX : newHeight / baseH;
 
     const scaleShape = (shape: Shape): Shape => {
       if (shape.type === 'text' && shape.text != null && shape.fontSize != null) {
@@ -1167,7 +1169,7 @@ export default function App() {
             ...L,
             image: img,
             imageX: Math.round(ix * scaleX),
-            imageY: Math.round(iy * scaleY),
+            imageY: Math.round(iy * (lockAspectRatio ? scaleX : scaleY)),
             imageRotation: undefined,
             shapes: L.shapes.map(scaleShape),
           });
@@ -2041,8 +2043,8 @@ export default function App() {
         isOpen={isResizeModalOpen}
         onClose={() => setIsResizeModalOpen(false)}
         onResize={handleResize}
-        currentWidth={getDocumentCanvasSize(state.layers).width}
-        currentHeight={getDocumentCanvasSize(state.layers).height}
+        currentWidth={getActiveLayer(state.layers, state.activeLayerId)?.image?.width ?? 1}
+        currentHeight={getActiveLayer(state.layers, state.activeLayerId)?.image?.height ?? 1}
       />
 
       <CanvasSizeModal

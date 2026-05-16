@@ -8,7 +8,9 @@ import { formStyles } from './ui/formStyles';
 interface ResizeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onResize: (width: number, height: number) => void;
+  /** lockAspectRatio true면 원본 이미지 비율 유지(단일 스케일), false면 가로·세로 독립 */
+  onResize: (width: number, height: number, lockAspectRatio: boolean) => void;
+  /** 활성 레이어 래스터 픽셀 크기(원본 비율 기준) */
   currentWidth: number;
   currentHeight: number;
 }
@@ -30,6 +32,7 @@ export const ResizeModal: React.FC<ResizeModalProps> = ({
       setWidth(currentWidth);
       setHeight(currentHeight);
       setPercentage(100);
+      setLockAspectRatio(true);
     }
   }, [isOpen, currentWidth, currentHeight]);
 
@@ -137,7 +140,11 @@ export const ResizeModal: React.FC<ResizeModalProps> = ({
                   variant={lockAspectRatio ? 'primary' : 'secondary'}
                   size="icon"
                   className="absolute left-1/2 top-[34px] h-7 w-7 -translate-x-1/2 rounded-full p-0"
-                  title="종횡비 고정"
+                  title={
+                    lockAspectRatio
+                      ? '원본 비율 유지(기본). 클릭하면 가로·세로를 따로 조절'
+                      : '가로·세로 독립 조절. 클릭하면 원본 비율 유지'
+                  }
                 >
                   {lockAspectRatio ? <Link size={14} /> : <Link2Off size={14} />}
                 </Button>
@@ -160,7 +167,7 @@ export const ResizeModal: React.FC<ResizeModalProps> = ({
                 취소
               </Button>
               <Button
-                onClick={() => onResize(width, height)}
+                onClick={() => onResize(width, height, lockAspectRatio)}
                 variant="primary"
                 className="h-9 flex-1 rounded-lg text-sm"
               >
