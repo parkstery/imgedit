@@ -440,6 +440,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<ImagePlus size={18} strokeWidth={1.75} />}
           label="클립보드의 이미지를 현재 캔버스(활성 레이어)에 불러오기 (내부 복사·시스템 클립보드 이미지, Ctrl+V와 동일)"
         />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onSave}
+          icon={<Save size={18} />}
+          label="저장"
+          disabled={!documentHasRaster(state.layers)}
+        />
+        <ToolbarButton
+          compact={compactUi}
+          onClick={onSaveAs}
+          icon={<Download size={18} />}
+          label="다른 이름으로 저장(파일 다운로드)"
+          disabled={!documentHasRaster(state.layers)}
+        />
 
         <ToolbarButton
           compact={compactUi}
