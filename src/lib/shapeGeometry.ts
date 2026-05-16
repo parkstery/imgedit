@@ -398,7 +398,7 @@ const HANDLE_LOCAL: Record<ResizeHandleId, { hx: number; hy: number }> = {
 
 /** 리사이즈 핸들 드래그: startShape 기준으로 새 도형 산출.
  *  opts.anchorAtCenter=true(Alt)면 중심 앵커, 아니면 반대편 핸들 앵커.
- *  opts.uniform=true(Shift)면 비율 고정(aspect ratio 유지).
+ *  opts.uniform 기본 true — 가로·세로 비율 유지. false(Shift)면 자유 변형.
  *  텍스트는 강제 uniform.
  */
 export function applyResize(
@@ -431,7 +431,8 @@ export function applyResize(
   if (kx !== 0) W1 = deltaLocal.x / kx;
   if (ky !== 0) H1 = deltaLocal.y / ky;
   const forceUniform = startShape.type === 'text' && !isEdge;
-  if ((opts.uniform || forceUniform) && kx !== 0 && ky !== 0) {
+  const uniform = opts.uniform ?? true;
+  if ((uniform || forceUniform) && kx !== 0 && ky !== 0) {
     const ratioX = W1 / W0;
     const ratioY = H1 / H0;
     const absX = Math.abs(ratioX);

@@ -1836,7 +1836,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const st = resizeStateRef.current;
       const updated = applyResize(st.startShape, st.handle, current, {
         anchorAtCenter: e.altKey,
-        uniform: e.shiftKey,
+        uniform: !e.shiftKey,
       });
       st.hasMoved = true;
       setState(prev => ({
@@ -1882,7 +1882,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       const current = toImageCoords(pos);
       const updated = applyResize(st.startBoundsShape, st.handle, current, {
         anchorAtCenter: e.altKey,
-        uniform: e.shiftKey,
+        uniform: !e.shiftKey,
       });
       st.hasMoved = true;
       const b = getShapeBounds(updated);
