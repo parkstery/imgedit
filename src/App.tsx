@@ -795,7 +795,7 @@ export default function App() {
       if (srcW <= 0 || srcH <= 0) return;
 
       const scaledW = Math.max(1, Math.round(srcW * scale));
-      const scaledH = Math.max(1, Math.round(scaledW * (srcH / srcW)));
+      const scaledH = Math.max(1, Math.round(srcH * scale));
       const absCos = Math.abs(Math.cos(rotateRad));
       const absSin = Math.abs(Math.sin(rotateRad));
       const outW = Math.max(1, Math.ceil(scaledW * absCos + scaledH * absSin));
@@ -895,11 +895,9 @@ export default function App() {
           if (!selectedIds.has(sh.id)) return sh;
           let next = cloneShapeDeep(sh);
           if (opts.scale != null) {
-            next = remapShapePoints(next, p => scalePointAround(p, groupCenter, scale));
+            const ownCenter = getShapeRotationCenter(next);
+            next = remapShapePoints(next, p => scalePointAround(p, ownCenter, scale));
             next.lineWidth = Math.max(1, next.lineWidth * scale);
-            if (next.type === 'rect' && next.rectRadius != null) {
-              next.rectRadius = Math.max(0, next.rectRadius * scale);
-            }
             if (next.type === 'text' && next.fontSize != null) {
               next.fontSize = Math.max(4, next.fontSize * scale);
             }
