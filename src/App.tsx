@@ -762,8 +762,11 @@ export default function App() {
 
   const transformSelectedRaster = useCallback((opts: { scale?: number; rotateDeg?: number }) => {
     const s = stateRef.current;
-    if (!s.selectedRasterLayerId) return;
-    const layer = s.layers.find(l => l.id === s.selectedRasterLayerId);
+    const rasterLayerId =
+      s.selectedRasterLayerId ??
+      (s.selectedShapeIds.length === 0 ? s.activeLayerId : null);
+    if (!rasterLayerId) return;
+    const layer = s.layers.find(l => l.id === rasterLayerId);
     if (!layer?.image) return;
 
     const hasScale = opts.scale != null;
@@ -1092,22 +1095,82 @@ export default function App() {
 
   const handleResize = (newWidth: number, newHeight: number) => {
     if (!documentHasRaster(state.layers)) return;
+    const { width: currentWidth, height: currentHeight } = getDocumentCanvasSize(state.layers);
+    if (currentWidth <= 0 || currentHeight <= 0) return;
+
+    const scaleX = newWidth / currentWidth;
+    const scaleY = newHeight / currentHeight;
+
+    const scaleShape = (shape: Shape): Shape => {
+      if (shape.type === 'text' && shape.text != null && shape.fontSize != null) {
+        return {
+          ...shape,
+          x1: shape.x1 * scaleX,
+          y1: shape.y1 * scaleY,
+          x2: shape.x1 * scaleX,
+          y2: shape.y1 * scaleY,
+          fontSize: shape.fontSize * Math.sqrt(scaleX * scaleY),
+          lineWidth: 0,
+        };
+      }
+      const base = {
+        ...shape,
+        x1: shape.x1 * scaleX,
+        y1: shape.y1 * scaleY,
+        x2: shape.x2 * scaleX,
+        y2: shape.y2 * scaleY,
+        lineWidth: shape.lineWidth * Math.sqrt(scaleX * scaleY),
+      };
+      if (shape.type === 'rect' && shape.rectRadius != null) {
+        return {
+          ...base,
+          rectRadius: shape.rectRadius * Math.min(scaleX, scaleY),
+        };
+      }
+      if (shape.type === 'polyline' && shape.points) {
+        return {
+          ...base,
+          points: shape.points.map((p: Point) => ({ x: p.x * scaleX, y: p.y * scaleY })),
+        };
+      }
+      return base;
+    };
 
     const rescaleLayerImage = async (layer: EditorLayer): Promise<EditorLayer> => {
-      if (!layer.image) return layer;
+      if (!layer.image) {
+        return {
+          ...layer,
+          shapes: layer.shapes.map(scaleShape),
+        };
+      }
       const baked = await bakeRasterLayerVisualToAxisAligned(layer);
       const L = baked
         ? { ...layer, image: baked.image, imageX: baked.imageX, imageY: baked.imageY, imageRotation: undefined }
         : layer;
+      const ix = L.imageX ?? 0;
+      const iy = L.imageY ?? 0;
+      const iw = L.image.width;
+      const ih = L.image.height;
+      const newIw = Math.max(1, Math.round(iw * scaleX));
+      const newIh = Math.max(1, Math.round(ih * scaleY));
+
       const c = document.createElement('canvas');
-      c.width = newWidth;
-      c.height = newHeight;
+      c.width = newIw;
+      c.height = newIh;
       const x = c.getContext('2d');
       if (!x) return L;
-      x.drawImage(L.image!, 0, 0, newWidth, newHeight);
+      x.drawImage(L.image, 0, 0, newIw, newIh);
       return new Promise(resolve => {
         const img = new Image();
-        img.onload = () => resolve({ ...L, image: img, imageX: 0, imageY: 0, imageRotation: undefined });
+        img.onload = () =>
+          resolve({
+            ...L,
+            image: img,
+            imageX: Math.round(ix * scaleX),
+            imageY: Math.round(iy * scaleY),
+            imageRotation: undefined,
+            shapes: L.shapes.map(scaleShape),
+          });
         img.onerror = () => resolve(L);
         img.src = c.toDataURL();
       });
@@ -1926,7 +1989,12 @@ export default function App() {
         onRedoLastShape={handleRedoLastShape}
         canUndoLast={undoStack.length > 0 || totalShapeCount(state.layers) > 0}
         canRedoLast={redoStack.length > 0}
-        canTransformSelection={state.selectedRasterLayerId != null || state.selectedShapeIds.length > 0}
+        canTransformSelection={
+          state.selectedRasterLayerId != null ||
+          state.selectedShapeIds.length > 0 ||
+          (!!getActiveLayer(state.layers, state.activeLayerId)?.image &&
+            state.selectedShapeIds.length === 0)
+        }
         onTransformScaleDown={handleTransformScaleDown}
         onTransformScaleUp={handleTransformScaleUp}
         onTransformRotateLeft={handleTransformRotateLeft}
