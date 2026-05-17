@@ -135,13 +135,6 @@ function rotatePointAround(p: Point, center: Point, rad: number): Point {
   };
 }
 
-function scalePointAround(p: Point, center: Point, scale: number): Point {
-  return {
-    x: center.x + (p.x - center.x) * scale,
-    y: center.y + (p.y - center.y) * scale,
-  };
-}
-
 function remapShapePoints(shape: Shape, map: (p: Point) => Point): Shape {
   const p1 = map({ x: shape.x1, y: shape.y1 });
   const p2 = map({ x: shape.x2, y: shape.y2 });
@@ -760,109 +753,26 @@ export default function App() {
     setState(prev => ({ ...prev, magicWandEdgeLimit: next }));
   };
 
-  const transformSelectedRaster = useCallback((opts: { scale?: number; rotateDeg?: number }) => {
+  const transformSelectedRaster = useCallback((opts: { rotateDeg: number }) => {
     const s = stateRef.current;
-    const rasterLayerId =
-      s.selectedRasterLayerId ??
-      (s.selectedShapeIds.length === 0 ? s.activeLayerId : null);
-    if (!rasterLayerId) return;
-    const layer = s.layers.find(l => l.id === rasterLayerId);
+    if (!s.selectedRasterLayerId) return;
+    const layer = s.layers.find(l => l.id === s.selectedRasterLayerId);
     if (!layer?.image) return;
 
-    const hasScale = opts.scale != null;
-    const rotateDeg = opts.rotateDeg ?? 0;
-    const rotateRad = (rotateDeg * Math.PI) / 180;
-    const hasRotate = opts.rotateDeg != null && rotateRad !== 0;
+    const rotateRad = (opts.rotateDeg * Math.PI) / 180;
+    if (rotateRad === 0) return;
 
-    if (!hasScale && !hasRotate) return;
-
-    if (!hasScale && hasRotate) {
-      const before = cloneLayersDeep(s.layers);
-      setState(prev => ({
-        ...prev,
-        layers: prev.layers.map(l =>
-          l.id === layer.id ? { ...l, imageRotation: (l.imageRotation ?? 0) + rotateRad } : l
-        ),
-      }));
-      handleLayersMutation(before, s.activeLayerId, '이미지 회전');
-      return;
-    }
-
-    const scale = Math.max(0.1, opts.scale ?? 1);
-    const snapshotBefore = cloneLayersDeep(s.layers);
-
-    const applyPixelRasterTransform = (L: EditorLayer) => {
-      if (!L.image) return;
-      const srcW = L.image.width;
-      const srcH = L.image.height;
-      if (srcW <= 0 || srcH <= 0) return;
-
-      const scaledW = Math.max(1, Math.round(srcW * scale));
-      const scaledH = Math.max(1, Math.round(srcH * scale));
-      const absCos = Math.abs(Math.cos(rotateRad));
-      const absSin = Math.abs(Math.sin(rotateRad));
-      const outW = Math.max(1, Math.ceil(scaledW * absCos + scaledH * absSin));
-      const outH = Math.max(1, Math.ceil(scaledW * absSin + scaledH * absCos));
-
-      const c = document.createElement('canvas');
-      c.width = outW;
-      c.height = outH;
-      const ctx = c.getContext('2d');
-      if (!ctx) return;
-      ctx.translate(outW / 2, outH / 2);
-      if (rotateRad) ctx.rotate(rotateRad);
-      ctx.drawImage(L.image, -scaledW / 2, -scaledH / 2, scaledW, scaledH);
-
-      let dataUrl: string;
-      try {
-        dataUrl = c.toDataURL();
-      } catch {
-        return;
-      }
-      const centerX = (L.imageX ?? 0) + srcW / 2;
-      const centerY = (L.imageY ?? 0) + srcH / 2;
-
-      const next = new Image();
-      next.onload = () => {
-        setState(prev => ({
-          ...prev,
-          layers: prev.layers.map(l =>
-            l.id === L.id
-              ? {
-                  ...l,
-                  image: next,
-                  imageX: centerX - outW / 2,
-                  imageY: centerY - outH / 2,
-                  imageRotation: undefined,
-                }
-              : l
-          ),
-        }));
-        handleLayersMutation(snapshotBefore, s.activeLayerId, '이미지 변형');
-      };
-      next.src = dataUrl;
-    };
-
-    const baseRot = layer.imageRotation ?? 0;
-    if (baseRot !== 0) {
-      void bakeRasterLayerVisualToAxisAligned(layer).then(baked => {
-        if (!baked) return;
-        const merged: EditorLayer = {
-          ...layer,
-          image: baked.image,
-          imageX: baked.imageX,
-          imageY: baked.imageY,
-          imageRotation: undefined,
-        };
-        applyPixelRasterTransform(merged);
-      });
-      return;
-    }
-
-    applyPixelRasterTransform(layer);
+    const before = cloneLayersDeep(s.layers);
+    setState(prev => ({
+      ...prev,
+      layers: prev.layers.map(l =>
+        l.id === layer.id ? { ...l, imageRotation: (l.imageRotation ?? 0) + rotateRad } : l
+      ),
+    }));
+    handleLayersMutation(before, s.activeLayerId, '이미지 회전');
   }, [handleLayersMutation]);
 
-  const transformSelectedShapes = useCallback((opts: { scale?: number; rotateDeg?: number }) => {
+  const transformSelectedShapes = useCallback((opts: { rotateDeg: number }) => {
     const s = stateRef.current;
     if (s.selectedShapeIds.length === 0) return;
     const selectedIds = new Set(s.selectedShapeIds);
@@ -887,8 +797,8 @@ export default function App() {
     });
     const groupCenter: Point = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
 
-    const rotateRad = ((opts.rotateDeg ?? 0) * Math.PI) / 180;
-    const scale = Math.max(0.1, opts.scale ?? 1);
+    const rotateRad = (opts.rotateDeg * Math.PI) / 180;
+    if (rotateRad === 0) return;
     const before = cloneLayersDeep(s.layers);
     setState(prev => ({
       ...prev,
@@ -897,50 +807,18 @@ export default function App() {
         shapes: layer.shapes.map(sh => {
           if (!selectedIds.has(sh.id)) return sh;
           let next = cloneShapeDeep(sh);
-          if (opts.scale != null) {
-            const ownCenter = getShapeRotationCenter(next);
-            next = remapShapePoints(next, p => scalePointAround(p, ownCenter, scale));
-            next.lineWidth = Math.max(1, next.lineWidth * scale);
-            if (next.type === 'text' && next.fontSize != null) {
-              next.fontSize = Math.max(4, next.fontSize * scale);
-            }
-          }
-          if (opts.rotateDeg != null && rotateRad !== 0) {
-            const ownCenter = getShapeRotationCenter(next);
-            const movedCenter = rotatePointAround(ownCenter, groupCenter, rotateRad);
-            const dx = movedCenter.x - ownCenter.x;
-            const dy = movedCenter.y - ownCenter.y;
-            next = remapShapePoints(next, p => ({ x: p.x + dx, y: p.y + dy }));
-            next.rotation = (next.rotation ?? 0) + rotateRad;
-          }
+          const ownCenter = getShapeRotationCenter(next);
+          const movedCenter = rotatePointAround(ownCenter, groupCenter, rotateRad);
+          const dx = movedCenter.x - ownCenter.x;
+          const dy = movedCenter.y - ownCenter.y;
+          next = remapShapePoints(next, p => ({ x: p.x + dx, y: p.y + dy }));
+          next.rotation = (next.rotation ?? 0) + rotateRad;
           return next;
         }),
       })),
     }));
     handleLayersMutation(before, s.activeLayerId, '개체 변형');
   }, [handleLayersMutation]);
-
-  const handleTransformScaleUp = useCallback(() => {
-    const s = stateRef.current;
-    if (s.selectedRasterLayerId) {
-      transformSelectedRaster({ scale: 1.1 });
-      return;
-    }
-    if (s.selectedShapeIds.length > 0) {
-      transformSelectedShapes({ scale: 1.1 });
-    }
-  }, [transformSelectedRaster, transformSelectedShapes]);
-
-  const handleTransformScaleDown = useCallback(() => {
-    const s = stateRef.current;
-    if (s.selectedRasterLayerId) {
-      transformSelectedRaster({ scale: 0.9 });
-      return;
-    }
-    if (s.selectedShapeIds.length > 0) {
-      transformSelectedShapes({ scale: 0.9 });
-    }
-  }, [transformSelectedRaster, transformSelectedShapes]);
 
   const handleTransformRotateLeft = useCallback(() => {
     const s = stateRef.current;
@@ -1992,13 +1870,8 @@ export default function App() {
         canUndoLast={undoStack.length > 0 || totalShapeCount(state.layers) > 0}
         canRedoLast={redoStack.length > 0}
         canTransformSelection={
-          state.selectedRasterLayerId != null ||
-          state.selectedShapeIds.length > 0 ||
-          (!!getActiveLayer(state.layers, state.activeLayerId)?.image &&
-            state.selectedShapeIds.length === 0)
+          state.selectedRasterLayerId != null || state.selectedShapeIds.length > 0
         }
-        onTransformScaleDown={handleTransformScaleDown}
-        onTransformScaleUp={handleTransformScaleUp}
         onTransformRotateLeft={handleTransformRotateLeft}
         onTransformRotateRight={handleTransformRotateRight}
         selectionRotationDeg={selectionRotationDeg}

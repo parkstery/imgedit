@@ -197,8 +197,6 @@ interface ToolbarProps {
   canUndoLast: boolean;
   canRedoLast: boolean;
   canTransformSelection: boolean;
-  onTransformScaleDown: () => void;
-  onTransformScaleUp: () => void;
   onTransformRotateLeft: () => void;
   onTransformRotateRight: () => void;
   /** 단일 도형 또는 래스터 선택 시 도 단위(절대 각). 없으면 입력란 숨김 */
@@ -250,8 +248,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   canUndoLast,
   canRedoLast,
   canTransformSelection,
-  onTransformScaleDown,
-  onTransformScaleUp,
   onTransformRotateLeft,
   onTransformRotateRight,
   selectionRotationDeg,
@@ -453,20 +449,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           icon={<Download size={18} />}
           label="다른 이름으로 저장(파일 다운로드)"
           disabled={!documentHasRaster(state.layers)}
-        />
-        <ToolbarButton
-          compact={compactUi}
-          onClick={onTransformScaleDown}
-          icon={<ZoomOut size={18} />}
-          label="선택 스케일다운 (90%)"
-          disabled={!canTransformSelection}
-        />
-        <ToolbarButton
-          compact={compactUi}
-          onClick={onTransformScaleUp}
-          icon={<ZoomIn size={18} />}
-          label="선택 스케일업 (110%)"
-          disabled={!canTransformSelection}
         />
         <ToolbarButton
           compact={compactUi}
