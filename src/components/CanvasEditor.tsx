@@ -982,12 +982,44 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       }
     }
 
+    if (state.tool === 'eraser' && documentHasRaster(state.layers)) {
+      const p = lastImgPosRef.current;
+      const radius = Math.max(1, state.eraserSize / 2);
+      ctx.save();
+      ctx.fillStyle = 'rgba(248, 113, 113, 0.15)';
+      ctx.strokeStyle = 'rgba(248, 113, 113, 0.9)';
+      ctx.lineWidth = Math.max(1, 1.5 / state.zoom);
+      ctx.setLineDash([4 / state.zoom, 3 / state.zoom]);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const erasing = eraserStateRef.current;
+      if (erasing) {
+        ctx.strokeStyle = 'rgba(248, 113, 113, 0.45)';
+        ctx.lineWidth = state.eraserSize;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(erasing.lastDocPoint.x, erasing.lastDocPoint.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     ctx.restore();
   }, [state, polyHover, captureDraftRect]);
 
   useLayoutEffect(() => {
     drawRef.current = draw;
   }, [draw]);
+
+  useEffect(() => {
+    if (state.tool === 'eraser') drawRef.current();
+  }, [state.tool, state.eraserSize]);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -1813,6 +1845,10 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
       drawRef.current();
     }
 
+    if (state.tool === 'eraser' && documentHasRaster(state.layers)) {
+      drawRef.current();
+    }
+
     if (state.tool === 'arc' && arcDraftRef.current.length === 2) {
       arcHoverRef.current = { x: imgPos.x, y: imgPos.y };
       drawRef.current();
@@ -2360,7 +2396,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           : state.tool === 'magicWand'
             ? 'cursor-crosshair'
           : state.tool === 'eraser'
-          ? 'cursor-crosshair'
+            ? 'cursor-none'
           : state.tool === 'text'
             ? 'cursor-crosshair'
             : state.tool === 'select' &&
