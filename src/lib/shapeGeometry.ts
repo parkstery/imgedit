@@ -1,5 +1,6 @@
 import type { Point, Rect, Shape } from '../types';
 import { getArcShapeBounds, hitTestArcShape } from './arcGeometry';
+import { getArrowHeadVertices, pointInTriangle } from './arrowGeometry';
 import { getShapeRotationCenter, measureTextShapeBounds } from './drawShapes';
 
 export type CornerHandleId = 'TL' | 'TR' | 'BR' | 'BL';
@@ -27,6 +28,19 @@ export function getShapeBounds(shape: Shape): Rect | null {
   if (shape.type === 'text') return measureTextShapeBounds(shape);
   if (shape.type === 'arc') {
     return getArcShapeBounds(shape);
+  }
+  if (shape.type === 'arrow') {
+    const head = getArrowHeadVertices(shape.x1, shape.y1, shape.x2, shape.y2, shape.lineWidth);
+    const xs = [shape.x1, shape.x2, head.tip.x, head.left.x, head.right.x];
+    const ys = [shape.y1, shape.y2, head.tip.y, head.left.y, head.right.y];
+    const x = Math.min(...xs);
+    const y = Math.min(...ys);
+    return {
+      x,
+      y,
+      width: Math.max(1, Math.max(...xs) - x),
+      height: Math.max(1, Math.max(...ys) - y),
+    };
   }
   if (shape.type === 'polyline' && shape.points && shape.points.length > 0) {
     let minX = shape.points[0].x;
@@ -110,6 +124,17 @@ export function getShapeWorldAabb(shape: Shape): Rect | null {
     return aabbFromCorners([
       { x: shape.x1, y: shape.y1 },
       { x: shape.x2, y: shape.y2 },
+    ]);
+  }
+
+  if (shape.type === 'arrow') {
+    const head = getArrowHeadVertices(shape.x1, shape.y1, shape.x2, shape.y2, shape.lineWidth);
+    return aabbFromCorners([
+      { x: shape.x1, y: shape.y1 },
+      { x: shape.x2, y: shape.y2 },
+      head.tip,
+      head.left,
+      head.right,
     ]);
   }
 
@@ -244,6 +269,17 @@ export function hitTestShape(shape: Shape, p: Point, tolerance: number): boolean
         { x: shape.x2, y: shape.y2 },
       ) <= effectiveTol
     );
+  }
+  if (shape.type === 'arrow') {
+    const tail = { x: shape.x1, y: shape.y1 };
+    const tip = { x: shape.x2, y: shape.y2 };
+    if (
+      pointToSegmentDistance(q, tail, tip) <= effectiveTol
+    ) {
+      return true;
+    }
+    const head = getArrowHeadVertices(shape.x1, shape.y1, shape.x2, shape.y2, shape.lineWidth);
+    return pointInTriangle(q, head.tip, head.left, head.right);
   }
   if (shape.type === 'rect') {
     const x1 = Math.min(shape.x1, shape.x2);

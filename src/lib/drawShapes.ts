@@ -1,4 +1,5 @@
 import type { LineStyle, Point, Shape, Rect } from '../types';
+import { strokeArrowOnContext } from './arrowGeometry';
 import { circumcircleThroughThreePoints, getArcStrokeParams } from './arcGeometry';
 
 /** 한글·라틴 모두 쓰기 좋은 시스템 폰트 스택 */
@@ -159,6 +160,9 @@ function drawShapePath(ctx: CanvasRenderingContext2D, shape: Shape) {
   if (shape.type === 'line') {
     ctx.moveTo(shape.x1, shape.y1);
     ctx.lineTo(shape.x2, shape.y2);
+  } else if (shape.type === 'arrow') {
+    strokeArrowOnContext(ctx, shape.x1, shape.y1, shape.x2, shape.y2, shape.lineWidth);
+    return;
   } else if (shape.type === 'rect') {
     const x = Math.min(shape.x1, shape.x2);
     const y = Math.min(shape.y1, shape.y2);

@@ -9,6 +9,7 @@ import {
   strokeShapesOnContext,
   getShapeRotationCenter,
 } from '../lib/drawShapes';
+import { strokeArrowOnContext } from '../lib/arrowGeometry';
 import {
   cloneShape,
   translateShape,
@@ -82,6 +83,8 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         return '원형 영역 선택';
       case 'line':
         return '선 그리기';
+      case 'arrow':
+        return '화살표 그리기';
       case 'rect':
         return '사각형 그리기';
       case 'ellipse':
@@ -641,6 +644,17 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           state.activeShape.lineWidth / state.zoom,
           state.activeShape.lineStyle,
         );
+        if (state.activeShape.type === 'arrow') {
+          strokeArrowOnContext(
+            ctx,
+            state.activeShape.x1,
+            state.activeShape.y1,
+            state.activeShape.x2,
+            state.activeShape.y2,
+            state.activeShape.lineWidth / state.zoom,
+          );
+          ctx.setLineDash([]);
+        } else {
         ctx.beginPath();
         if (state.activeShape.type === 'line') {
           ctx.moveTo(state.activeShape.x1, state.activeShape.y1);
@@ -665,6 +679,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
         }
         ctx.stroke();
         ctx.setLineDash([]);
+        }
     }
 
     if (state.polylineDraft && state.polylineDraft.points.length > 0) {
@@ -1801,7 +1816,7 @@ export const CanvasEditor: React.FC<CanvasEditorProps> = ({
           ...prev,
           activeShape: {
             id: Math.random().toString(36).substr(2, 9),
-            type: state.tool as 'line' | 'rect' | 'ellipse',
+            type: state.tool as 'line' | 'arrow' | 'rect' | 'ellipse',
             x1: imgPos.x,
             y1: imgPos.y,
             x2: imgPos.x,

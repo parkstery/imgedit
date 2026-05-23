@@ -567,6 +567,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           label="선 그리기" 
           active={state.tool === 'line'}
         />
+        <ToolbarButton compact={compactUi}
+          onClick={() => onToolChange('arrow')}
+          icon={<ArrowUpRight size={18} />}
+          label="화살표 그리기"
+          active={state.tool === 'arrow'}
+        />
         <ToolbarButton compact={compactUi} 
           onClick={() => onToolChange('polyline')} 
           icon={<PolylineToolbarIcon size={18} />} 

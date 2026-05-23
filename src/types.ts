@@ -38,6 +38,7 @@ export type Tool =
   | 'magicWand'
   | 'freehand'
   | 'line'
+  | 'arrow'
   | 'polyline'
   | 'rect'
   | 'ellipse'
@@ -98,7 +99,7 @@ export interface EditorLayer {
 
 export interface Shape {
   id: string;
-  type: 'line' | 'rect' | 'ellipse' | 'arc' | 'polyline' | 'text';
+  type: 'line' | 'arrow' | 'rect' | 'ellipse' | 'arc' | 'polyline' | 'text';
   x1: number;
   y1: number;
   x2: number;
